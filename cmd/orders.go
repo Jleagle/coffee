@@ -1,0 +1,137 @@
+package cmd
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/signal"
+	"time"
+
+	"cloud.google.com/go/firestore"
+	"github.com/Jleagle/coffee/helpers"
+	"github.com/rodaine/table"
+	"github.com/spf13/cobra"
+	"google.golang.org/api/iterator"
+)
+
+var (
+	ordersWatch bool
+	ordersMine  bool
+)
+
+var ordersCmd = &cobra.Command{
+	Use:   "orders",
+	Short: "List your orders",
+	RunE:  runOrders,
+}
+
+func init() {
+	ordersCmd.Flags().BoolVarP(&ordersWatch, "watch", "w", false, "Refresh every 10 seconds")
+	ordersCmd.Flags().BoolVarP(&ordersMine, "mine", "m", false, "Show only your orders")
+	RootCmd.AddCommand(ordersCmd)
+}
+
+type orderEntry struct {
+	UserName  string
+	DrinkName string
+	Status    string
+	Timestamp int64
+}
+
+func runOrders(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
+	sess, client, err := authedClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if err := printOrders(ctx, cmd, client, sess); err != nil {
+		return err
+	}
+
+	if !ordersWatch {
+		return nil
+	}
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			// Clear screen and reprint
+			cmd.Print("\033[2J\033[H")
+			if err := printOrders(ctx, cmd, client, sess); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *helpers.Session) error {
+	startOfDay := time.Now().Truncate(24 * time.Hour).UnixMilli()
+
+	iter := client.Collection("order").
+		Where("orderTimestamp", ">", startOfDay).
+		OrderBy("orderTimestamp", firestore.Asc).
+		Documents(ctx)
+	defer iter.Stop()
+
+	var orders []orderEntry
+	for {
+		doc, err := iter.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("listing orders: %w", err)
+		}
+		data := doc.Data()
+		userName, _ := data["userName"].(string)
+		drinkName, _ := data["drinkName"].(string)
+		status, _ := data["status"].(string)
+		userId, _ := data["userId"].(string)
+
+		if ordersMine && userId != sess.UID {
+			continue
+		}
+
+		var ts int64
+		switch v := data["orderTimestamp"].(type) {
+		case int64:
+			ts = v
+		case float64:
+			ts = int64(v)
+		}
+
+		orders = append(orders, orderEntry{
+			UserName:  userName,
+			DrinkName: drinkName,
+			Status:    status,
+			Timestamp: ts,
+		})
+	}
+
+	if len(orders) == 0 {
+		cmd.Println("No orders found today.")
+		return nil
+	}
+
+	tbl := table.New("Name", "Drink", "Status", "Time").WithWriter(cmd.OutOrStdout())
+	for _, o := range orders {
+		ts := time.UnixMilli(o.Timestamp).Format("15:04")
+		tbl.AddRow(o.UserName, o.DrinkName, o.Status, ts)
+	}
+	tbl.Print()
+
+	if ordersWatch {
+		cmd.Printf("\nLast updated: %s (Ctrl+C to stop)\n", time.Now().Format("15:04:05"))
+	}
+	return nil
+}
