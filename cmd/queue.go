@@ -80,7 +80,7 @@ func runOrders(cmd *cobra.Command, args []string) error {
 func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *helpers.Session) error {
 
 	iter := client.Collection("order").
-		//Where("orderTimestamp", ">", time.Now().Truncate(24*time.Hour).UnixMilli()). // Start of day
+		Where("orderTimestamp", ">", time.Now().Truncate(24*time.Hour).UnixMilli()). // Start of day
 		OrderBy("orderTimestamp", firestore.Asc).
 		Documents(ctx)
 
@@ -130,7 +130,7 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	var buf bytes.Buffer
 	tbl := table.New("Time", "Name", "Drink", "Status").WithWriter(&buf)
 	for _, o := range orders {
-		ts := time.UnixMilli(o.Timestamp).Format(time.DateTime)
+		ts := time.UnixMilli(o.Timestamp).Format(time.TimeOnly)
 		tbl.AddRow(ts, o.UserName, o.DrinkName, o.Status)
 	}
 	tbl.Print()
