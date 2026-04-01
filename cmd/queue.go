@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -21,7 +23,7 @@ var (
 )
 
 var ordersCmd = &cobra.Command{
-	Use:   "orders",
+	Use:   "queue",
 	Short: "List your orders",
 	RunE:  runOrders,
 }
@@ -33,6 +35,7 @@ func init() {
 }
 
 type orderEntry struct {
+	ID        string
 	UserName  string
 	DrinkName string
 	Status    string
@@ -75,12 +78,12 @@ func runOrders(cmd *cobra.Command, args []string) error {
 }
 
 func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *helpers.Session) error {
-	startOfDay := time.Now().Truncate(24 * time.Hour).UnixMilli()
 
 	iter := client.Collection("order").
-		Where("orderTimestamp", ">", startOfDay).
+		//Where("orderTimestamp", ">", time.Now().Truncate(24*time.Hour).UnixMilli()). // Start of day
 		OrderBy("orderTimestamp", firestore.Asc).
 		Documents(ctx)
+
 	defer iter.Stop()
 
 	var orders []orderEntry
@@ -111,6 +114,7 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 		}
 
 		orders = append(orders, orderEntry{
+			ID:        doc.Ref.ID,
 			UserName:  userName,
 			DrinkName: drinkName,
 			Status:    status,
@@ -123,12 +127,19 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 		return nil
 	}
 
-	tbl := table.New("Name", "Drink", "Status", "Time").WithWriter(cmd.OutOrStdout())
+	var buf bytes.Buffer
+	tbl := table.New("Time", "Name", "Drink", "Status").WithWriter(&buf)
 	for _, o := range orders {
-		ts := time.UnixMilli(o.Timestamp).Format("15:04")
-		tbl.AddRow(o.UserName, o.DrinkName, o.Status, ts)
+		ts := time.UnixMilli(o.Timestamp).Format(time.DateTime)
+		tbl.AddRow(ts, o.UserName, o.DrinkName, o.Status)
 	}
 	tbl.Print()
+
+	// Apply colors after table formatting so column widths aren't affected
+	output := buf.String()
+	output = strings.ReplaceAll(output, "cancelled", "\033[31mcancelled\033[0m")
+	output = strings.ReplaceAll(output, "completed", "\033[32mcompleted\033[0m")
+	fmt.Fprint(cmd.OutOrStdout(), output)
 
 	if ordersWatch {
 		cmd.Printf("\nLast updated: %s (Ctrl+C to stop)\n", time.Now().Format("15:04:05"))
