@@ -20,7 +20,6 @@ var drinksCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(drinksCmd)
-	drinksCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
 type drinkEntry struct {

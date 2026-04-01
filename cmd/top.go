@@ -24,7 +24,6 @@ var topCmd = &cobra.Command{
 func init() {
 	topCmd.Flags().BoolVarP(&topAll, "all", "a", false, "Show all time leaderboard")
 	RootCmd.AddCommand(topCmd)
-	topCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
 func runTop(cmd *cobra.Command, args []string) error {

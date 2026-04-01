@@ -16,7 +16,6 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
-	RootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
 func authedClient(ctx context.Context) (*helpers.Session, *firestore.Client, error) {

@@ -18,7 +18,6 @@ var orderCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(orderCmd)
-	orderCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
 func runOrder(cmd *cobra.Command, args []string) error {

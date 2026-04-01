@@ -17,7 +17,6 @@ var optionsCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(optionsCmd)
-	optionsCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
 var optionCollections = []string{
