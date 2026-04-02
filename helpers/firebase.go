@@ -27,6 +27,18 @@ var (
 	ProjectID          = os.Getenv("COFFEE_PROJECT_ID")
 )
 
+func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*Session, *firestore.Client, error) {
+	sess, err := GetAuth(printer)
+	if err != nil {
+		return nil, nil, err
+	}
+	client, err := NewFirestoreClient(ctx, sess.IDToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sess, client, nil
+}
+
 //go:embed signin.html
 var signInHTML string
 

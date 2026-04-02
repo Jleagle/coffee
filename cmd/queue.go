@@ -22,16 +22,49 @@ var (
 	ordersMine  bool
 )
 
-var ordersCmd = &cobra.Command{
-	Use:   "queue",
-	Short: "List your orders",
-	RunE:  runOrders,
-}
-
 func init() {
 	ordersCmd.Flags().BoolVarP(&ordersWatch, "watch", "w", false, "Refresh every 10 seconds")
 	ordersCmd.Flags().BoolVarP(&ordersMine, "mine", "m", false, "Show only your orders")
 	RootCmd.AddCommand(ordersCmd)
+}
+
+var ordersCmd = &cobra.Command{
+	Use:   "queue",
+	Short: "List your orders",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer cancel()
+
+		sess, client, err := helpers.AuthedClient(ctx, cmd.Printf)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+
+		if err := printOrders(ctx, cmd, client, sess); err != nil {
+			return err
+		}
+
+		if !ordersWatch {
+			return nil
+		}
+
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				// Clear screen and reprint
+				cmd.Print("\033[2J\033[H")
+				if err := printOrders(ctx, cmd, client, sess); err != nil {
+					return err
+				}
+			}
+		}
+	},
 }
 
 type orderEntry struct {
@@ -40,41 +73,6 @@ type orderEntry struct {
 	DrinkName string
 	Status    string
 	Timestamp int64
-}
-
-func runOrders(cmd *cobra.Command, args []string) error {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-
-	sess, client, err := authedClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	if err := printOrders(ctx, cmd, client, sess); err != nil {
-		return err
-	}
-
-	if !ordersWatch {
-		return nil
-	}
-
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			// Clear screen and reprint
-			cmd.Print("\033[2J\033[H")
-			if err := printOrders(ctx, cmd, client, sess); err != nil {
-				return err
-			}
-		}
-	}
 }
 
 func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *helpers.Session) error {
