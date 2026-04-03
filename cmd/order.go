@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,16 +10,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	orderDrinkID string
+	orderTime    string
+)
+
 func init() {
+	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "tVZmk6rGTqBN7JgAEKhG", "Drink document ID (required)")
+	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM format (default: now)")
+	//orderCmd.MarkFlagRequired("drink")
 	RootCmd.AddCommand(orderCmd)
 }
 
 var orderCmd = &cobra.Command{
-	Use:   "order [drink-id]",
+	Use:   "order",
 	Short: "Order a drink by its ID",
-	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		drinkID := args[0]
 
 		ctx := context.Background()
 		sess, client, err := helpers.AuthedClient(ctx, cmd.Printf)
@@ -30,16 +35,17 @@ var orderCmd = &cobra.Command{
 		defer client.Close()
 
 		// Read the drink
-		drinkDoc, err := client.Collection("drinks").Doc(drinkID).Get(ctx)
+		drinkDoc, err := client.Collection("drinks").Doc(orderDrinkID).Get(ctx)
 		if err != nil {
-			return fmt.Errorf("reading drink %s: %w", drinkID, err)
+			return fmt.Errorf("reading drink %s: %w", orderDrinkID, err)
 		}
+
 		drink := drinkDoc.Data()
 		drinkName, _ := drink["name"].(string)
 		cmd.Printf("\nDrink: %s\n", drinkName)
 
 		// Resolve default options
-		options, err := resolveOptions(ctx, client, drink)
+		options, err := resolveOptions(ctx, drink)
 		if err != nil {
 			return fmt.Errorf("resolving options: %w", err)
 		}
@@ -54,31 +60,33 @@ var orderCmd = &cobra.Command{
 			}
 		}
 
-		// Create the order
+		// Resolve order time
 		now := time.Now()
+		if orderTime != "" {
+			parsed, err := time.Parse("15:04", orderTime)
+			if err != nil {
+				return fmt.Errorf("invalid time format %q, expected HH:MM: %w", orderTime, err)
+			}
+			now = time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+		}
 		order := map[string]any{
 			"userName":             sess.DisplayName,
 			"userId":               sess.UID,
 			"userEmail":            sess.Email,
 			"drinkName":            drinkName,
-			"drinkId":              drinkID,
+			"drinkId":              orderDrinkID,
 			"options":              options,
 			"orderTimestamp":       now.UnixMilli(),
 			"lastUpdatedTimestamp": now.UnixMilli(),
 			"status":               "queuing",
 		}
 
-		cmd.Println("\nCreating order:")
-
-		enc := json.NewEncoder(cmd.OutOrStdout())
-		enc.SetIndent("", "  ")
-		fmt.Println(enc.Encode(order))
-
-		docRef, _, err := client.Collection("order").Add(ctx, order)
+		_, _, err = client.Collection("order").Add(ctx, order)
 		if err != nil {
 			return fmt.Errorf("creating order: %w", err)
 		}
-		cmd.Printf("\nOrder created successfully! Document ID: %s\n", docRef.ID)
+
+		cmd.Printf("\nOrder created successfully!\n")
 		return nil
 	},
 }
@@ -91,7 +99,7 @@ type orderOption struct {
 	Count      int                    `firestore:"count,omitempty" json:"count,omitempty"`
 }
 
-func resolveOptions(ctx context.Context, client *firestore.Client, drink map[string]any) ([]orderOption, error) {
+func resolveOptions(ctx context.Context, drink map[string]any) ([]orderOption, error) {
 	optionGroups, ok := drink["optionGroups"].(map[string]any)
 	if !ok {
 		return nil, nil
