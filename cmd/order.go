@@ -75,7 +75,7 @@ var orderCmd = &cobra.Command{
 			"userEmail":            sess.Email,
 			"drinkName":            drinkName,
 			"drinkId":              orderDrinkID,
-			"options":              options,
+			"options":              options, // array of option documents
 			"orderTimestamp":       now.UnixMilli(),
 			"lastUpdatedTimestamp": now.UnixMilli(),
 			"status":               "queuing",
