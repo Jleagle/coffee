@@ -2,42 +2,42 @@ package cmd
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
-	"github.com/Jleagle/coffee/helpers"
+	"github.com/Jleagle/coffee/firebase"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
 	"google.golang.org/api/iterator"
 )
 
-var topAll bool
+var topDays int
+var topLimit int
 
 func init() {
-	topCmd.Flags().BoolVarP(&topAll, "all", "a", false, "Show all time leaderboard")
+	topCmd.Flags().IntVarP(&topDays, "days", "d", 28, "Days to look back")
+	topCmd.Flags().IntVarP(&topLimit, "limit", "l", 20, "How many people to show")
 	RootCmd.AddCommand(topCmd)
 }
 
 var topCmd = &cobra.Command{
-	Use:   "top",
+	Use:   "top-users",
 	Short: "Leaderboard of most orders in the last 28 days",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		ctx := context.Background()
-		sess, client, err := helpers.AuthedClient(ctx, cmd.Printf)
+		sess, client, err := firebase.AuthedClient(ctx, cmd.Printf)
 		if err != nil {
 			return err
 		}
 		defer client.Close()
 
-		query := client.Collection("order").Query
-		if !topAll {
-			query = client.Collection("order").
-				Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -28).UnixMilli())
-		}
+		query := client.Collection("order").
+			Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -topDays).UnixMilli())
 
 		iter := query.Documents(ctx)
 		defer iter.Stop()
@@ -56,20 +56,21 @@ var topCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("listing orders: %w", err)
 			}
-			data := doc.Data()
-			status, _ := data["status"].(string)
-			if status == "cancelled" {
+
+			order := firebase.Order{}
+			if err := doc.DataTo(&order); err != nil {
+				return fmt.Errorf("decoding order %s: %w", doc.Ref.ID, err)
+			}
+			if order.Status == "cancelled" {
 				continue
 			}
-			userId, _ := data["userId"].(string)
-			userName, _ := data["userName"].(string)
-			if userId == "" {
+			if order.UserID == "" {
 				continue
 			}
-			if t, ok := counts[userId]; ok {
+			if t, ok := counts[order.UserID]; ok {
 				t.Count++
 			} else {
-				counts[userId] = &userTally{Name: userName, Count: 1}
+				counts[order.UserID] = &userTally{Name: order.UserName, Count: 1}
 			}
 		}
 
@@ -88,8 +89,8 @@ var topCmd = &cobra.Command{
 		for uid, t := range counts {
 			entries = append(entries, entry{UserID: uid, Name: t.Name, Count: t.Count})
 		}
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].Count > entries[j].Count
+		slices.SortFunc(entries, func(i, j entry) int {
+			return cmp.Compare(j.Count, i.Count)
 		})
 
 		var buf bytes.Buffer
@@ -100,19 +101,22 @@ var topCmd = &cobra.Command{
 			if e.UserID == sess.UID {
 				myRank = i
 			}
-			if i < 20 {
+			if i < topLimit {
 				tbl.AddRow(i+1, e.Name, e.Count)
 			}
 		}
 
 		// Show own row if outside top 20
-		if myRank >= 20 {
+		if myRank >= topLimit {
 			tbl.AddRow("", "---", "---")
 			tbl.AddRow(myRank+1, entries[myRank].Name, entries[myRank].Count)
 		}
 
 		tbl.Print()
-		fmt.Fprint(cmd.OutOrStdout(), buf.String())
+		_, err = fmt.Fprint(cmd.OutOrStdout(), buf.String())
+		if err != nil {
+			return err
+		}
 
 		return nil
 	},

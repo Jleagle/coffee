@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
-	"github.com/Jleagle/coffee/helpers"
+	"github.com/Jleagle/coffee/firebase"
+	"github.com/Jleagle/coffee/session"
+	"github.com/fatih/color"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
 	"google.golang.org/api/iterator"
@@ -29,13 +31,14 @@ func init() {
 }
 
 var ordersCmd = &cobra.Command{
-	Use:   "queue",
+	Use:   "orders",
 	Short: "List your orders",
 	RunE: func(cmd *cobra.Command, args []string) error {
+
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 
-		sess, client, err := helpers.AuthedClient(ctx, cmd.Printf)
+		sess, client, err := firebase.AuthedClient(ctx, cmd.Printf)
 		if err != nil {
 			return err
 		}
@@ -67,24 +70,16 @@ var ordersCmd = &cobra.Command{
 	},
 }
 
-type orderEntry struct {
-	ID        string
-	UserName  string
-	DrinkName string
-	Status    string
-	Timestamp int64
-}
-
-func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *helpers.Session) error {
+func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *session.Session) error {
 
 	iter := client.Collection("order").
-		Where("orderTimestamp", ">", time.Now().Truncate(24*time.Hour).UnixMilli()). // Start of day
+		Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -1).Truncate(24*time.Hour).UnixMilli()). // Start of day
 		OrderBy("orderTimestamp", firestore.Asc).
 		Documents(ctx)
 
 	defer iter.Stop()
 
-	var orders []orderEntry
+	var orders []firebase.Order
 	for {
 		doc, err := iter.Next()
 		if errors.Is(err, iterator.Done) {
@@ -93,31 +88,20 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 		if err != nil {
 			return fmt.Errorf("listing orders: %w", err)
 		}
-		data := doc.Data()
-		userName, _ := data["userName"].(string)
-		drinkName, _ := data["drinkName"].(string)
-		status, _ := data["status"].(string)
-		userId, _ := data["userId"].(string)
 
-		if ordersMine && userId != sess.UID {
+		//fmt.Println(doc.Data())
+
+		order := firebase.Order{}
+		if err := doc.DataTo(&order); err != nil {
+			return fmt.Errorf("decoding order %s: %w", doc.Ref.ID, err)
+		}
+		order.ID = doc.Ref.ID
+
+		if ordersMine && order.UserID != sess.UID {
 			continue
 		}
 
-		var ts int64
-		switch v := data["orderTimestamp"].(type) {
-		case int64:
-			ts = v
-		case float64:
-			ts = int64(v)
-		}
-
-		orders = append(orders, orderEntry{
-			ID:        doc.Ref.ID,
-			UserName:  userName,
-			DrinkName: drinkName,
-			Status:    status,
-			Timestamp: ts,
-		})
+		orders = append(orders, order)
 	}
 
 	if len(orders) == 0 {
@@ -128,16 +112,20 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	var buf bytes.Buffer
 	tbl := table.New("Time", "Name", "Drink", "Status").WithWriter(&buf)
 	for _, o := range orders {
-		ts := time.UnixMilli(o.Timestamp).Format(time.TimeOnly)
+		ts := time.UnixMilli(o.OrderTimestamp).Format(time.TimeOnly)
 		tbl.AddRow(ts, o.UserName, o.DrinkName, o.Status)
 	}
 	tbl.Print()
 
 	// Apply colors after table formatting so column widths aren't affected
 	output := buf.String()
-	output = strings.ReplaceAll(output, "cancelled", "\033[31mcancelled\033[0m")
-	output = strings.ReplaceAll(output, "completed", "\033[32mcompleted\033[0m")
-	fmt.Fprint(cmd.OutOrStdout(), output)
+	output = strings.ReplaceAll(output, "cancelled", color.RedString("cancelled"))
+	output = strings.ReplaceAll(output, "completed", color.GreenString("completed"))
+
+	_, err := fmt.Fprint(cmd.OutOrStdout(), output)
+	if err != nil {
+		return err
+	}
 
 	if ordersWatch {
 		cmd.Printf("\nLast updated: %s (Ctrl+C to stop)\n", time.Now().Format("15:04:05"))

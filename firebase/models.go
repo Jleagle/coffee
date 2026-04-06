@@ -1,0 +1,82 @@
+package firebase
+
+import "cloud.google.com/go/firestore"
+
+type Modeler interface {
+	Table() string
+	GetID() string
+	SetID(doc *firestore.DocumentSnapshot)
+}
+
+type Base struct {
+	ID string `firestore:"-"`
+}
+
+func (b *Base) GetID() string {
+	return b.ID
+}
+
+func (b *Base) SetID(doc firestore.DocumentSnapshot) {
+	b.ID = doc.Ref.ID
+}
+
+type Order struct {
+	Base
+	UserName       string           `firestore:"userName"`
+	UserEmail      string           `firestore:"userEmail"`
+	UserID         string           `firestore:"userId"`
+	OrderTimestamp int64            `firestore:"orderTimestamp"`
+	Options        []map[string]any `firestore:"options"`
+	Status         string           `firestore:"status"`
+	DrinkName      string           `firestore:"drinkName"`
+	DrinkID        string           `firestore:"drinkId"`
+	LastUpdated    int64            `firestore:"lastUpdatedTimestamp"`
+}
+
+func (o Order) Table() string {
+	return "order"
+}
+
+type OrderOption struct {
+	Base
+	Collection string                 `firestore:"collection"`
+	OptionName string                 `firestore:"optionName"`
+	OptionRef  *firestore.DocumentRef `firestore:"optionRef"`
+	OptionID   string                 `firestore:"optionId"`
+	Count      int                    `firestore:"count,omitempty"`
+}
+
+func (o OrderOption) Table() string {
+	return "todo"
+}
+
+type Drink struct {
+	Base
+	Categories     []*firestore.DocumentRef `firestore:"category"`
+	Name           string                   `firestore:"name"`
+	OptionGroups   map[string]any           `firestore:"optionGroups"`
+	DefaultOptions map[string]any           `firestore:"defaultOptions"`
+}
+
+func (d Drink) Table() string {
+	return "drinks"
+}
+
+type Option struct {
+	Base
+	Name string `firestore:"name"`
+}
+
+func (o Option) Table() string {
+	return "todo"
+}
+
+type DrinkCategory struct {
+	Base
+	Name  string `firestore:"name"`
+	Order int    `firestore:"order"`
+}
+
+func (d DrinkCategory) Table() string {
+	return "drinkCategories"
+}

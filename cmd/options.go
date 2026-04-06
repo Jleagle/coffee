@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Jleagle/coffee/helpers"
+	"github.com/Jleagle/coffee/firebase"
+	"github.com/fatih/color"
+	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
 	"google.golang.org/api/iterator"
 )
@@ -20,47 +22,56 @@ var optionsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		ctx := context.Background()
-		_, client, err := helpers.AuthedClient(ctx, cmd.Printf)
+		_, client, err := firebase.AuthedClient(ctx, cmd.Printf)
 		if err != nil {
 			return err
 		}
 
 		defer client.Close()
 
-		var optionCollections = []string{
-			"beans",
-			"milks",
-			"cup_choices",
-			"syrups",
-			"sugars",
-			"toppings",
-			"extras",
+		var optionCollections = map[string]string{
+			"beans":           "Beans",
+			"milks":           "Milks",
+			"cup_choices":     "Cups",
+			"syrups":          "Syrups",
+			"sugars":          "Sugars",
+			"toppings":        "Toppings",
+			"extras":          "Extras",
+			"drinkCategories": "Categories",
 		}
 
-		for _, coll := range optionCollections {
+		tbl := table.New("Collection", "ID", "Name").WithWriter(cmd.OutOrStdout())
+
+		for coll, title := range optionCollections {
 			iter := client.Collection(coll).Documents(ctx)
 
-			var found bool
+			tbl.AddRow("", "")
+			tbl.AddRow("", color.HiGreenString(title))
+
 			for {
 				doc, err := iter.Next()
 				if errors.Is(err, iterator.Done) {
 					break
 				}
 				if err != nil {
-					iter.Stop()
 					return fmt.Errorf("listing %s: %w", coll, err)
 				}
-				if !found {
-					cmd.Printf("\n%s\n", coll)
-					found = true
+
+				//fmt.Println(doc.Data())
+
+				option := firebase.Option{}
+				if err := doc.DataTo(&option); err != nil {
+					return fmt.Errorf("decoding %s %s: %w", coll, doc.Ref.ID, err)
 				}
-				data := doc.Data()
-				name, _ := data["name"].(string)
-				cmd.Printf("  %s: %s\n", doc.Ref.ID, name)
+				option.ID = doc.Ref.ID
+
+				tbl.AddRow(doc.Ref.ID, option.Name)
 			}
 			iter.Stop()
 		}
-		cmd.Println()
+
+		tbl.Print()
+
 		return nil
 	},
 }
