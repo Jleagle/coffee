@@ -1,4 +1,4 @@
-package helpers
+package firebase
 
 import (
 	"bytes"
@@ -16,23 +16,24 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"github.com/Jleagle/coffee/session"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/option"
 )
 
 var (
-	FirebaseAPIKey     = os.Getenv("COFFEE_API_KEY")
-	FirebaseAuthDomain = os.Getenv("COFFEE_AUTH_DOMAIN")
-	FirebaseAppID      = os.Getenv("COFFEE_APP_ID")
-	ProjectID          = os.Getenv("COFFEE_PROJECT_ID")
+	varAPIKey     = os.Getenv("COFFEE_API_KEY")
+	varAuthDomain = os.Getenv("COFFEE_AUTH_DOMAIN")
+	varAppID      = os.Getenv("COFFEE_APP_ID")
+	varProjectID  = os.Getenv("COFFEE_PROJECT_ID")
 )
 
-func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*Session, *firestore.Client, error) {
+func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*session.Session, *firestore.Client, error) {
 	sess, err := GetAuth(printer)
 	if err != nil {
 		return nil, nil, err
 	}
-	client, err := NewFirestoreClient(ctx, sess.IDToken)
+	client, err := newFirestoreClient(ctx, sess.IDToken)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,7 +43,7 @@ func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*
 //go:embed signin.html
 var signInHTML string
 
-func DoFirebaseAuth(printer func(format string, a ...any)) (firebaseToken, uid string, err error) {
+func doFirebaseAuth(printer func(format string, a ...any)) (firebaseToken, uid string, err error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return "", "", fmt.Errorf("starting local server: %w", err)
@@ -71,10 +72,10 @@ func DoFirebaseAuth(printer func(format string, a ...any)) (firebaseToken, uid s
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		signInTmpl.Execute(w, map[string]any{
-			"APIKey":     FirebaseAPIKey,
-			"AuthDomain": FirebaseAuthDomain,
-			"ProjectID":  ProjectID,
-			"AppID":      FirebaseAppID,
+			"APIKey":     varAPIKey,
+			"AuthDomain": varAuthDomain,
+			"ProjectID":  varProjectID,
+			"AppID":      varAppID,
 			"Port":       port,
 		})
 	})
@@ -130,14 +131,14 @@ func DoFirebaseAuth(printer func(format string, a ...any)) (firebaseToken, uid s
 		}
 		printer("Signed in as: %s (uid: %s)\n", result.Email, result.UID)
 
-		s := &Session{
+		s := &session.Session{
 			IDToken:      result.Token,
 			RefreshToken: result.RefreshToken,
 			UID:          result.UID,
 			Email:        result.Email,
 			DisplayName:  result.DisplayName,
 		}
-		if saveErr := SaveSession(s); saveErr != nil {
+		if saveErr := session.Save(s); saveErr != nil {
 			printer("Warning: could not save session: %v\n", saveErr)
 		}
 
@@ -149,18 +150,18 @@ func DoFirebaseAuth(printer func(format string, a ...any)) (firebaseToken, uid s
 	}
 }
 
-func NewFirestoreClient(ctx context.Context, idToken string) (*firestore.Client, error) {
+func newFirestoreClient(ctx context.Context, idToken string) (*firestore.Client, error) {
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: idToken})
-	client, err := firestore.NewClient(ctx, ProjectID, option.WithTokenSource(ts))
+	client, err := firestore.NewClient(ctx, varProjectID, option.WithTokenSource(ts))
 	if err != nil {
 		return nil, fmt.Errorf("creating firestore client: %w", err)
 	}
 	return client, nil
 }
 
-func RefreshIDToken(refreshToken string) (newIDToken, newRefreshToken string, err error) {
+func refreshIDToken(refreshToken string) (newIDToken, newRefreshToken string, err error) {
 	payload := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s", refreshToken)
-	apiURL := "https://securetoken.googleapis.com/v1/token?key=" + FirebaseAPIKey
+	apiURL := "https://securetoken.googleapis.com/v1/token?key=" + varAPIKey
 	resp, err := http.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(payload))
 	if err != nil {
 		return "", "", fmt.Errorf("POST to token refresh: %w", err)
@@ -198,7 +199,7 @@ func LookupFirebaseUser(idToken string) (localID, email string, err error) {
 		return "", "", fmt.Errorf("marshalling lookup payload: %w", err)
 	}
 
-	apiURL := "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + FirebaseAPIKey
+	apiURL := "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + varAPIKey
 	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return "", "", fmt.Errorf("POST to accounts:lookup: %w", err)
@@ -229,36 +230,36 @@ func LookupFirebaseUser(idToken string) (localID, email string, err error) {
 }
 
 // GetAuth returns a valid session with Firebase ID token.
-func GetAuth(printer func(format string, a ...any)) (*Session, error) {
-	s, err := LoadSession()
+func GetAuth(printer func(format string, a ...any)) (*session.Session, error) {
+	s, err := session.Load()
 	if err == nil {
 		_, _, err := LookupFirebaseUser(s.IDToken)
 		if err == nil {
-			printer("Authenticated as: %s (%s)\n", s.Email, s.UID)
+			//printer("Authenticated as: %s (%s)\n", s.Email, s.UID)
 			return s, nil
 		}
 
 		printer("Session expired, refreshing...\n")
-		newID, newRefresh, err := RefreshIDToken(s.RefreshToken)
+		newID, newRefresh, err := refreshIDToken(s.RefreshToken)
 		if err == nil {
 			s.IDToken = newID
 			s.RefreshToken = newRefresh
-			if saveErr := SaveSession(s); saveErr != nil {
+			if saveErr := session.Save(s); saveErr != nil {
 				printer("Warning: could not save refreshed session: %v\n", saveErr)
 			}
-			printer("Authenticated as: %s (%s)\n", s.Email, s.UID)
+			//printer("Authenticated as: %s (%s)\n", s.Email, s.UID)
 			return s, nil
 		}
 		printer("Refresh failed (%v), re-authenticating...\n", err)
 	}
 
-	token, uid, err := DoFirebaseAuth(printer)
+	token, uid, err := doFirebaseAuth(printer)
 	if err != nil {
 		return nil, err
 	}
-	s, err = LoadSession()
+	s, err = session.Load()
 	if err != nil {
-		return &Session{IDToken: token, UID: uid}, nil
+		return &session.Session{IDToken: token, UID: uid}, nil
 	}
 	return s, nil
 }
