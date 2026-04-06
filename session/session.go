@@ -1,4 +1,4 @@
-package helpers
+package session
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ func sessionPath() (string, error) {
 	return filepath.Join(home, ".coffee.json"), nil
 }
 
-func LoadSession() (*Session, error) {
+func Load() (*Session, error) {
 	path, err := sessionPath()
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func LoadSession() (*Session, error) {
 	return &s, nil
 }
 
-func SaveSession(s *Session) error {
+func Save(s *Session) error {
 	path, err := sessionPath()
 	if err != nil {
 		return err
