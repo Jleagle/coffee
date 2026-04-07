@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"cloud.google.com/go/firestore"
 	"github.com/Jleagle/coffee/session"
 	"golang.org/x/oauth2"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -262,4 +264,32 @@ func GetAuth(printer func(format string, a ...any)) (*session.Session, error) {
 		return &session.Session{IDToken: token, UID: uid}, nil
 	}
 	return s, nil
+}
+
+func LoadRows[T Modeler](ctx context.Context, client *firestore.Client, model T) (map[string]T, error) {
+
+	iter := client.Collection(model.Table()).Documents(ctx)
+	defer iter.Stop()
+
+	m := map[string]T{}
+	for {
+		doc, err := iter.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		var d T
+		if err := doc.DataTo(&d); err != nil {
+			return nil, fmt.Errorf("decoding category %s: %w", doc.Ref.ID, err)
+		}
+
+		d.SetID(doc)
+
+		m[d.GetID()] = d
+	}
+
+	return m, nil
 }

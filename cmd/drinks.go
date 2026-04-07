@@ -1,14 +1,16 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 
 	"cloud.google.com/go/firestore"
-	"github.com/Jleagle/coffee/helpers"
+	"github.com/Jleagle/coffee/firebase"
 	"github.com/rodaine/table"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"google.golang.org/api/iterator"
 )
@@ -23,14 +25,14 @@ var drinksCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		ctx := context.Background()
-		_, client, err := helpers.AuthedClient(ctx, cmd.Printf)
+		_, client, err := firebase.AuthedClient(ctx, cmd.Printf)
 		if err != nil {
 			return err
 		}
 		defer client.Close()
 
 		// Load all categories by ID
-		categories, err := loadCategories(ctx, client)
+		categories, err := firebase.LoadRows(ctx, client, &firebase.DrinkCategory{})
 		if err != nil {
 			return fmt.Errorf("loading categories: %w", err)
 		}
@@ -39,12 +41,7 @@ var drinksCmd = &cobra.Command{
 		iter := client.Collection("drinks").OrderBy("name", firestore.Asc).Limit(100).Documents(ctx)
 		defer iter.Stop()
 
-		type drinkWithOrder struct {
-			drinkEntry
-			catOrder int
-		}
-		var drinks []drinkWithOrder
-
+		var drinks []firebase.Drink
 		for {
 			doc, err := iter.Next()
 			if errors.Is(err, iterator.Done) {
@@ -53,100 +50,33 @@ var drinksCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("listing drinks: %w", err)
 			}
-			data := doc.Data()
-			name, _ := data["name"].(string)
+			var drink firebase.Drink
 
-			catName := "Uncategorized"
-			catOrder := 9999
-			if refs := extractCategoryRefs(data["category"]); len(refs) > 0 {
-				if cat, ok := categories[refs[0].ID]; ok {
-					catName = cat.Name
-					catOrder = cat.Order
-				}
+			if err := doc.DataTo(&drink); err != nil {
+				return fmt.Errorf("decoding drink %s: %w", doc.Ref.ID, err)
 			}
+			drink.ID = doc.Ref.ID
 
-			drinks = append(drinks, drinkWithOrder{
-				drinkEntry: drinkEntry{ID: doc.Ref.ID, Category: catName, Name: name},
-				catOrder:   catOrder,
-			})
+			for _, v := range drink.Categories {
+				drink.Categories = []*firestore.DocumentRef{v}
+				drinks = append(drinks, drink)
+			}
 		}
 
-		sort.Slice(drinks, func(i, j int) bool {
-			if drinks[i].catOrder != drinks[j].catOrder {
-				return drinks[i].catOrder < drinks[j].catOrder
-			}
-			if drinks[i].Category != drinks[j].Category {
-				return drinks[i].Category < drinks[j].Category
-			}
-			return drinks[i].Name < drinks[j].Name
+		slices.SortFunc(drinks, func(i, j firebase.Drink) int {
+			return cmp.Or(
+				cmp.Compare(categories[i.Categories[0].ID].Order, categories[j.Categories[0].ID].Order),
+				cmp.Compare(categories[i.Categories[0].ID].Name, categories[j.Categories[0].ID].Name),
+				cmp.Compare(i.Name, j.Name),
+			)
 		})
 
 		tbl := table.New("ID", "Category", "Drink").WithWriter(cmd.OutOrStdout())
 		for _, d := range drinks {
-			tbl.AddRow(d.ID, d.Category, d.Name)
+			tbl.AddRow(d.ID, lo.Capitalize(categories[d.Categories[0].ID].Name), d.Name)
 		}
 		tbl.Print()
+
 		return nil
 	},
-}
-
-type drinkEntry struct {
-	ID       string
-	Category string
-	Name     string
-}
-
-type categoryGroup struct {
-	Name   string
-	Order  int
-	Drinks []drinkEntry
-}
-
-func loadCategories(ctx context.Context, client *firestore.Client) (map[string]*categoryGroup, error) {
-	categories := map[string]*categoryGroup{}
-
-	iter := client.Collection("drinkCategories").Documents(ctx)
-	defer iter.Stop()
-
-	for {
-		doc, err := iter.Next()
-		if errors.Is(err, iterator.Done) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		data := doc.Data()
-		name, _ := data["name"].(string)
-		order := 0
-		switch v := data["order"].(type) {
-		case int64:
-			order = int(v)
-		case float64:
-			order = int(v)
-		}
-		categories[doc.Ref.ID] = &categoryGroup{Name: name, Order: order}
-	}
-
-	return categories, nil
-}
-
-func extractCategoryRefs(v any) []*firestore.DocumentRef {
-	if v == nil {
-		return nil
-	}
-	switch val := v.(type) {
-	case *firestore.DocumentRef:
-		return []*firestore.DocumentRef{val}
-	case []any:
-		var refs []*firestore.DocumentRef
-		for _, item := range val {
-			if ref, ok := item.(*firestore.DocumentRef); ok {
-				refs = append(refs, ref)
-			}
-		}
-		return refs
-	default:
-		return nil
-	}
 }

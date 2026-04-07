@@ -16,7 +16,7 @@ func (b *Base) GetID() string {
 	return b.ID
 }
 
-func (b *Base) SetID(doc firestore.DocumentSnapshot) {
+func (b *Base) SetID(doc *firestore.DocumentSnapshot) {
 	b.ID = doc.Ref.ID
 }
 
@@ -33,7 +33,7 @@ type Order struct {
 	LastUpdated    int64            `firestore:"lastUpdatedTimestamp"`
 }
 
-func (o Order) Table() string {
+func (o *Order) Table() string {
 	return "order"
 }
 
@@ -46,7 +46,7 @@ type OrderOption struct {
 	Count      int                    `firestore:"count,omitempty"`
 }
 
-func (o OrderOption) Table() string {
+func (o *OrderOption) Table() string {
 	return "todo"
 }
 
@@ -58,7 +58,7 @@ type Drink struct {
 	DefaultOptions map[string]any           `firestore:"defaultOptions"`
 }
 
-func (d Drink) Table() string {
+func (d *Drink) Table() string {
 	return "drinks"
 }
 
@@ -67,7 +67,7 @@ type Option struct {
 	Name string `firestore:"name"`
 }
 
-func (o Option) Table() string {
+func (o *Option) Table() string {
 	return "todo"
 }
 
@@ -77,6 +77,6 @@ type DrinkCategory struct {
 	Order int    `firestore:"order"`
 }
 
-func (d DrinkCategory) Table() string {
+func (d *DrinkCategory) Table() string {
 	return "drinkCategories"
 }
