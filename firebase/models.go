@@ -52,10 +52,13 @@ func (o *OrderOption) Table() string {
 
 type Drink struct {
 	Base
-	Categories     []*firestore.DocumentRef `firestore:"category"`
-	Name           string                   `firestore:"name"`
-	OptionGroups   map[string]any           `firestore:"optionGroups"`
-	DefaultOptions map[string]any           `firestore:"defaultOptions"`
+	DefaultOptions  map[string]any           `firestore:"defaultOptions"`
+	OptionGroups    map[string]any           `firestore:"optionGroups"`
+	Name            string                   `firestore:"name"`
+	Categories      []*firestore.DocumentRef `firestore:"category"`
+	Description     string                   `firestore:"description"`
+	Image           string                   `firestore:"image"`
+	RequiredOptions []string                 `firestore:"requiredOptions"`
 }
 
 func (d *Drink) Table() string {
