@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/Jleagle/coffee/firebase"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
-	"google.golang.org/api/iterator"
 )
 
 var topDays int
@@ -36,11 +34,17 @@ var topCmd = &cobra.Command{
 		}
 		defer client.Close()
 
+		// Load orders
 		query := client.Collection("order").
 			Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -topDays).UnixMilli())
 
 		iter := query.Documents(ctx)
 		defer iter.Stop()
+
+		orders, err := firebase.LoadRows(iter, &firebase.Order{})
+		if err != nil {
+			return fmt.Errorf("loading orders: %w", err)
+		}
 
 		type userTally struct {
 			Name  string
@@ -48,20 +52,8 @@ var topCmd = &cobra.Command{
 		}
 
 		counts := map[string]*userTally{}
-		for {
-			doc, err := iter.Next()
-			if errors.Is(err, iterator.Done) {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("listing orders: %w", err)
-			}
-
-			order := firebase.Order{}
-			if err := doc.DataTo(&order); err != nil {
-				return fmt.Errorf("decoding order %s: %w", doc.Ref.ID, err)
-			}
-			if order.Status == "cancelled" {
+		for _, order := range orders {
+			if order.Status != "completed" {
 				continue
 			}
 			if order.UserID == "" {

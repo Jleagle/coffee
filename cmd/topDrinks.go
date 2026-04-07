@@ -3,14 +3,12 @@ package cmd
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/Jleagle/coffee/firebase"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
-	"google.golang.org/api/iterator"
 )
 
 func init() {
@@ -29,18 +27,17 @@ var topDrinksCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		// Load all categories by ID
-		orders, err := firebase.LoadRows(ctx, client, &firebase.Order{})
+		// Load orders
+		iter := client.Collection("order").Where("status", "==", "completed").Documents(ctx)
+		defer iter.Stop()
+
+		orders, err := firebase.LoadRows(iter, &firebase.Order{})
 		if err != nil {
 			return fmt.Errorf("loading orders: %w", err)
 		}
 
 		var ordersCount = map[string]*int{}
-
 		for _, v := range orders {
-			if v.Status != "completed" {
-				continue
-			}
 			if t, ok := ordersCount[v.DrinkID]; ok {
 				*t++
 			} else {
@@ -50,26 +47,17 @@ var topDrinksCmd = &cobra.Command{
 		}
 
 		// Load drinks
-		iter := client.Collection("drinks").Documents(ctx)
+		iter = client.Collection("drinks").Documents(ctx)
 		defer iter.Stop()
 
+		drinksM, err := firebase.LoadRows(iter, &firebase.Drink{})
+		if err != nil {
+			return fmt.Errorf("loading orders: %w", err)
+		}
+
 		var drinks []firebase.Drink
-		for {
-			doc, err := iter.Next()
-			if errors.Is(err, iterator.Done) {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("listing drinks: %w", err)
-			}
-			var drink firebase.Drink
-
-			if err := doc.DataTo(&drink); err != nil {
-				return fmt.Errorf("decoding drink %s: %w", doc.Ref.ID, err)
-			}
-			drink.ID = doc.Ref.ID
-
-			drinks = append(drinks, drink)
+		for _, v := range drinksM {
+			drinks = append(drinks, *v)
 		}
 
 		slices.SortFunc(drinks, func(i, j firebase.Drink) int {

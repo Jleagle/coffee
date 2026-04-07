@@ -3,7 +3,6 @@ package cmd
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/rodaine/table"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
-	"google.golang.org/api/iterator"
 )
 
 func init() {
@@ -31,35 +29,29 @@ var drinksCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		// Load all categories by ID
-		categories, err := firebase.LoadRows(ctx, client, &firebase.DrinkCategory{})
+		// Load categories
+		iter := client.Collection("drinkCategories").Documents(ctx)
+		defer iter.Stop()
+
+		categories, err := firebase.LoadRows(iter, &firebase.DrinkCategory{})
 		if err != nil {
 			return fmt.Errorf("loading categories: %w", err)
 		}
 
-		// Load all drinks with their category
-		iter := client.Collection("drinks").OrderBy("name", firestore.Asc).Limit(100).Documents(ctx)
+		// Load drinks
+		iter = client.Collection("drinks").OrderBy("name", firestore.Asc).Limit(100).Documents(ctx)
 		defer iter.Stop()
 
+		rows, err := firebase.LoadRows(iter, &firebase.Drink{})
+		if err != nil {
+			return fmt.Errorf("loading categories: %w", err)
+		}
+
 		var drinks []firebase.Drink
-		for {
-			doc, err := iter.Next()
-			if errors.Is(err, iterator.Done) {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("listing drinks: %w", err)
-			}
-			var drink firebase.Drink
-
-			if err := doc.DataTo(&drink); err != nil {
-				return fmt.Errorf("decoding drink %s: %w", doc.Ref.ID, err)
-			}
-			drink.ID = doc.Ref.ID
-
+		for _, drink := range rows {
 			for _, v := range drink.Categories {
 				drink.Categories = []*firestore.DocumentRef{v}
-				drinks = append(drinks, drink)
+				drinks = append(drinks, *drink)
 			}
 		}
 

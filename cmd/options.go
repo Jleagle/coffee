@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/Jleagle/coffee/firebase"
 	"github.com/fatih/color"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
-	"google.golang.org/api/iterator"
 )
 
 func init() {
@@ -43,31 +41,20 @@ var optionsCmd = &cobra.Command{
 		tbl := table.New("Collection", "ID", "Name").WithWriter(cmd.OutOrStdout())
 
 		for coll, title := range optionCollections {
+
 			iter := client.Collection(coll).Documents(ctx)
+
+			options, err := firebase.LoadRows(iter, &firebase.Option{})
+			if err != nil {
+				return fmt.Errorf("loading %s: %w", coll, err)
+			}
 
 			tbl.AddRow("", "")
 			tbl.AddRow("", color.HiGreenString(title))
 
-			for {
-				doc, err := iter.Next()
-				if errors.Is(err, iterator.Done) {
-					break
-				}
-				if err != nil {
-					return fmt.Errorf("listing %s: %w", coll, err)
-				}
-
-				//fmt.Println(doc.Data())
-
-				option := firebase.Option{}
-				if err := doc.DataTo(&option); err != nil {
-					return fmt.Errorf("decoding %s %s: %w", coll, doc.Ref.ID, err)
-				}
-				option.ID = doc.Ref.ID
-
-				tbl.AddRow(doc.Ref.ID, option.Name)
+			for id, option := range options {
+				tbl.AddRow(id, option.Name)
 			}
-			iter.Stop()
 		}
 
 		tbl.Print()

@@ -2,11 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
-	"google.golang.org/api/iterator"
 )
 
 var (
@@ -72,37 +72,26 @@ var ordersCmd = &cobra.Command{
 
 func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *session.Session) error {
 
-	iter := client.Collection("order").
-		Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -1).Truncate(24*time.Hour).UnixMilli()). // Start of day
-		OrderBy("orderTimestamp", firestore.Asc).
-		Documents(ctx)
-
+	q := client.Collection("order").
+		Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -1).Truncate(24*time.Hour).UnixMilli()) // Start of day
+	if ordersMine {
+		q = q.Where("userId", "==", sess.UID)
+	}
+	iter := q.OrderBy("orderTimestamp", firestore.Asc).Documents(ctx)
 	defer iter.Stop()
 
-	var orders []firebase.Order
-	for {
-		doc, err := iter.Next()
-		if errors.Is(err, iterator.Done) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("listing orders: %w", err)
-		}
-
-		//fmt.Println(doc.Data())
-
-		order := firebase.Order{}
-		if err := doc.DataTo(&order); err != nil {
-			return fmt.Errorf("decoding order %s: %w", doc.Ref.ID, err)
-		}
-		order.ID = doc.Ref.ID
-
-		if ordersMine && order.UserID != sess.UID {
-			continue
-		}
-
-		orders = append(orders, order)
+	ordersMap, err := firebase.LoadRows(iter, &firebase.Order{})
+	if err != nil {
+		return fmt.Errorf("loading orders: %w", err)
 	}
+
+	orders := make([]*firebase.Order, 0, len(ordersMap))
+	for _, o := range ordersMap {
+		orders = append(orders, o)
+	}
+	slices.SortFunc(orders, func(a, b *firebase.Order) int {
+		return cmp.Compare(a.OrderTimestamp, b.OrderTimestamp)
+	})
 
 	if len(orders) == 0 {
 		cmd.Println("No orders found today.")
@@ -110,10 +99,10 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	}
 
 	var buf bytes.Buffer
-	tbl := table.New("Time", "Name", "Drink", "Status").WithWriter(&buf)
-	for _, o := range orders {
+	tbl := table.New("Order", "Time", "Name", "Drink", "Status").WithWriter(&buf)
+	for k, o := range orders {
 		ts := time.UnixMilli(o.OrderTimestamp).Format(time.TimeOnly)
-		tbl.AddRow(ts, o.UserName, o.DrinkName, o.Status)
+		tbl.AddRow(k+1, ts, o.UserName, o.DrinkName, o.Status)
 	}
 	tbl.Print()
 
@@ -122,7 +111,7 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	output = strings.ReplaceAll(output, "cancelled", color.RedString("cancelled"))
 	output = strings.ReplaceAll(output, "completed", color.GreenString("completed"))
 
-	_, err := fmt.Fprint(cmd.OutOrStdout(), output)
+	_, err = fmt.Fprint(cmd.OutOrStdout(), output)
 	if err != nil {
 		return err
 	}
