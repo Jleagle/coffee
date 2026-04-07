@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 
-	"cloud.google.com/go/firestore"
 	"github.com/Jleagle/coffee/firebase"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
@@ -31,9 +30,23 @@ var topDrinksCmd = &cobra.Command{
 		defer client.Close()
 
 		// Load all categories by ID
-		orders, err := loadOrders(ctx, client)
+		orders, err := firebase.LoadRows(ctx, client, &firebase.Order{})
 		if err != nil {
 			return fmt.Errorf("loading orders: %w", err)
+		}
+
+		var ordersCount = map[string]*int{}
+
+		for _, v := range orders {
+			if v.Status != "completed" {
+				continue
+			}
+			if t, ok := ordersCount[v.DrinkID]; ok {
+				*t++
+			} else {
+				x := 1
+				ordersCount[v.DrinkID] = &x
+			}
 		}
 
 		// Load drinks
@@ -51,8 +64,6 @@ var topDrinksCmd = &cobra.Command{
 			}
 			var drink firebase.Drink
 
-			//fmt.Println(doc.Data())
-
 			if err := doc.DataTo(&drink); err != nil {
 				return fmt.Errorf("decoding drink %s: %w", doc.Ref.ID, err)
 			}
@@ -63,52 +74,16 @@ var topDrinksCmd = &cobra.Command{
 
 		slices.SortFunc(drinks, func(i, j firebase.Drink) int {
 			return cmp.Or(
-				cmp.Compare(*orders[j.ID], *orders[i.ID]),
+				cmp.Compare(*ordersCount[j.ID], *ordersCount[i.ID]),
 			)
 		})
 
 		tbl := table.New("ID", "Orders", "Drink").WithWriter(cmd.OutOrStdout())
 		for _, d := range drinks {
-			tbl.AddRow(d.ID, *orders[d.ID], d.Name)
+			tbl.AddRow(d.ID, *ordersCount[d.ID], d.Name)
 		}
 		tbl.Print()
 
 		return nil
 	},
-}
-
-func loadOrders(ctx context.Context, client *firestore.Client) (orders map[string]*int, err error) {
-
-	iter := client.Collection("order").
-		Where("status", "!=", "cancelled").
-		Documents(ctx)
-
-	defer iter.Stop()
-
-	orders = map[string]*int{}
-
-	for {
-		doc, err := iter.Next()
-		if errors.Is(err, iterator.Done) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("listing orders: %w", err)
-		}
-
-		order := firebase.Order{}
-		if err := doc.DataTo(&order); err != nil {
-			return nil, fmt.Errorf("decoding order %s: %w", doc.Ref.ID, err)
-		}
-		order.ID = doc.Ref.ID
-
-		if t, ok := orders[order.DrinkID]; ok {
-			*t++
-		} else {
-			x := 1
-			orders[order.DrinkID] = &x
-		}
-	}
-
-	return orders, nil
 }
