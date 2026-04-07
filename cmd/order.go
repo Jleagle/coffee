@@ -45,8 +45,6 @@ var orderCmd = &cobra.Command{
 		}
 		drink.ID = doc.Ref.ID
 
-		cmd.Printf("\nDrink: %s\n", drink.Name)
-
 		// Resolve order time
 		now := time.Now()
 		if orderTime != "" {
@@ -58,16 +56,16 @@ var orderCmd = &cobra.Command{
 		}
 
 		// Payload
-		order := map[string]any{
-			"userName":             sess.DisplayName,
-			"userId":               sess.UID,
-			"userEmail":            sess.Email,
-			"drinkName":            drink.Name,
-			"drinkId":              orderDrinkID,
-			"options":              nil, // array of option documents
-			"orderTimestamp":       now.UnixMilli(),
-			"lastUpdatedTimestamp": now.UnixMilli(),
-			"status":               "queuing",
+		order := firebase.Order{
+			UserName:       sess.DisplayName,
+			UserEmail:      sess.Email,
+			UserID:         sess.UID,
+			OrderTimestamp: now.UnixMilli(),
+			Options:        []firebase.OrderOption{},
+			Status:         "queuing",
+			DrinkName:      drink.Name,
+			DrinkID:        orderDrinkID,
+			LastUpdated:    now.UnixMilli(),
 		}
 
 		_, _, err = client.Collection("order").Add(ctx, order)
@@ -75,7 +73,7 @@ var orderCmd = &cobra.Command{
 			return fmt.Errorf("creating order: %w", err)
 		}
 
-		cmd.Printf("\nOrder created successfully!\n")
+		cmd.Println("Order created successfully!")
 		return nil
 	},
 }

@@ -21,15 +21,15 @@ func (b *Base) SetID(doc *firestore.DocumentSnapshot) {
 
 type Order struct {
 	Base
-	UserName       string           `firestore:"userName"`
-	UserEmail      string           `firestore:"userEmail"`
-	UserID         string           `firestore:"userId"`
-	OrderTimestamp int64            `firestore:"orderTimestamp"`
-	Options        []map[string]any `firestore:"options"`
-	Status         string           `firestore:"status"`
-	DrinkName      string           `firestore:"drinkName"`
-	DrinkID        string           `firestore:"drinkId"`
-	LastUpdated    int64            `firestore:"lastUpdatedTimestamp"`
+	UserName       string        `firestore:"userName"`
+	UserEmail      string        `firestore:"userEmail"`
+	UserID         string        `firestore:"userId"`
+	OrderTimestamp int64         `firestore:"orderTimestamp"`
+	Options        []OrderOption `firestore:"options"`
+	Status         string        `firestore:"status"`
+	DrinkName      string        `firestore:"drinkName"`
+	DrinkID        string        `firestore:"drinkId"`
+	LastUpdated    int64         `firestore:"lastUpdatedTimestamp"`
 }
 
 type OrderOption struct {
