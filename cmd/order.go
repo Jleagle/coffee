@@ -16,8 +16,8 @@ var (
 
 func init() {
 	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "tVZmk6rGTqBN7JgAEKhG", "Drink document ID (required)")
-	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM format (default: now)")
 	//orderCmd.MarkFlagRequired("drink")
+	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM or HH:MM:SS format (default: now)")
 	RootCmd.AddCommand(orderCmd)
 }
 
@@ -48,13 +48,16 @@ var orderCmd = &cobra.Command{
 		drink.ID = doc.Ref.ID
 
 		// Resolve order time
-		now := time.Now()
+		orderAt := time.Now()
 		if orderTime != "" {
-			parsed, err := time.Parse("15:04", orderTime)
+			parsed, err := time.Parse("15:04:05", orderTime)
 			if err != nil {
-				return fmt.Errorf("invalid time format %q, expected HH:MM: %w", orderTime, err)
+				parsed, err = time.Parse("15:04", orderTime)
+				if err != nil {
+					return fmt.Errorf("invalid time format %q, expected HH:MM or HH:MM:SS: %w", orderTime, err)
+				}
 			}
-			now = time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+			orderAt = time.Date(orderAt.Year(), orderAt.Month(), orderAt.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, orderAt.Location())
 		}
 
 		// Payload
@@ -62,12 +65,12 @@ var orderCmd = &cobra.Command{
 			UserName:       sess.DisplayName,
 			UserEmail:      sess.Email,
 			UserID:         sess.UID,
-			OrderTimestamp: now.UnixMilli(),
+			OrderTimestamp: orderAt.UnixMilli(),
 			Options:        []firebase.OrderOption{},
 			Status:         "queuing",
 			DrinkName:      drink.Name,
 			DrinkID:        orderDrinkID,
-			LastUpdated:    now.UnixMilli(),
+			LastUpdated:    orderAt.UnixMilli(),
 		}
 
 		_, _, err = client.Collection("order").Add(ctx, order)
