@@ -74,7 +74,7 @@ var ordersCmd = &cobra.Command{
 func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *session.Session) error {
 
 	q := client.Collection("order").
-		Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -1).Truncate(24*time.Hour).UnixMilli()) // Start of day
+		Where("orderTimestamp", ">", time.Now().Truncate(24*time.Hour).UnixMilli()) // Start of day
 	if ordersMine {
 		q = q.Where("userId", "==", sess.UID)
 	}
