@@ -107,12 +107,12 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	}
 	tbl.Print()
 
-	// Apply colors after table formatting so column widths aren't affected
-	output := buf.String()
-	output = strings.ReplaceAll(output, "cancelled", color.RedString("cancelled"))
-	output = strings.ReplaceAll(output, "completed", color.GreenString("completed"))
+	// Apply colours
+	out := strings.ReplaceAll(buf.String(), "cancelled", color.HiRedString("cancelled"))
+	out = strings.ReplaceAll(out, "completed", color.HiGreenString("completed"))
+	out = strings.ReplaceAll(out, sess.DisplayName, color.HiBlueString(sess.DisplayName))
 
-	_, err = fmt.Fprint(cmd.OutOrStdout(), output)
+	_, err = fmt.Fprint(cmd.OutOrStdout(), out)
 	if err != nil {
 		return err
 	}
@@ -120,5 +120,6 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	if ordersWatch {
 		cmd.Printf("\nLast updated: %s (Ctrl+C to stop)\n", time.Now().Format("15:04:05"))
 	}
+
 	return nil
 }

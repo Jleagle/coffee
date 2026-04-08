@@ -5,9 +5,11 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Jleagle/coffee/firebase"
+	"github.com/fatih/color"
 	"github.com/rodaine/table"
 	"github.com/spf13/cobra"
 )
@@ -81,6 +83,7 @@ var topCmd = &cobra.Command{
 			return cmp.Compare(j.Count, i.Count)
 		})
 
+		// Build content
 		var buf bytes.Buffer
 		tbl := table.New("#", "Name", "Orders").WithWriter(&buf)
 
@@ -101,7 +104,12 @@ var topCmd = &cobra.Command{
 		}
 
 		tbl.Print()
-		_, err = fmt.Fprint(cmd.OutOrStdout(), buf.String())
+
+		// Apply colours
+		out := strings.ReplaceAll(buf.String(), sess.DisplayName, color.HiBlueString(sess.DisplayName))
+
+		// Output
+		_, err = fmt.Fprint(cmd.OutOrStdout(), out)
 		if err != nil {
 			return err
 		}
