@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Debug queue" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="coffee" />
+    <working_directory value="$PROJECT_DIR$" />
+    <parameters value="queue" />
+    <kind value="PACKAGE" />
+    <package value="github.com/Jleagle/coffee" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/main.go" />
+    <method v="2" />
+  </configuration>
+</component>

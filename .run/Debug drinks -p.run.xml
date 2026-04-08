@@ -1,8 +1,8 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Debug order" type="GoApplicationRunConfiguration" factoryName="Go Application">
+  <configuration default="false" name="Debug drinks -p" type="GoApplicationRunConfiguration" factoryName="Go Application">
     <module name="coffee" />
     <working_directory value="$PROJECT_DIR$" />
-    <parameters value="order" />
+    <parameters value="drinks -p" />
     <kind value="PACKAGE" />
     <package value="github.com/Jleagle/coffee" />
     <directory value="$PROJECT_DIR$" />
