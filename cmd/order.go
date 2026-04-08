@@ -1,8 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/Jleagle/coffee/firebase"
@@ -15,9 +16,9 @@ var (
 )
 
 func init() {
-	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "tVZmk6rGTqBN7JgAEKhG", "Drink document ID (required)")
-	//orderCmd.MarkFlagRequired("drink")
+	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "", "Drink document ID (required)")
 	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM or HH:MM:SS format (default: now)")
+	orderCmd.MarkFlagRequired("drink")
 	RootCmd.AddCommand(orderCmd)
 }
 
@@ -58,6 +59,15 @@ var orderCmd = &cobra.Command{
 				}
 			}
 			orderAt = time.Date(orderAt.Year(), orderAt.Month(), orderAt.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, orderAt.Location())
+
+			if wait := time.Until(orderAt); wait > 0 {
+				cmd.Printf("Waiting until %s to place order...\n", orderAt.Format("15:04:05"))
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 		}
 
 		// Payload
