@@ -9,3 +9,7 @@ var RootCmd = &cobra.Command{
 	Short:             "Order coffee from your terminal",
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
+
+func init() {
+	RootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
+}
