@@ -10,7 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	drinkDrink string
+)
+
 func init() {
+	drinkCmd.Flags().StringVarP(&drinkDrink, "drink", "d", "", "Drink ID")
+	drinkCmd.MarkFlagRequired("drink")
 	RootCmd.AddCommand(drinkCmd)
 }
 
@@ -26,14 +32,14 @@ var drinkCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		doc, err := client.Collection("drinks").Doc(drinkID).Get(ctx)
+		doc, err := client.Collection("drinks").Doc(drinkDrink).Get(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("reading drink %s: %w", drinkID, err)
+			return fmt.Errorf("reading drink %s: %w", drinkDrink, err)
 		}
 
 		var d firebase.Drink
 		if err := doc.DataTo(&d); err != nil {
-			return fmt.Errorf("decoding drink %s: %w", drinkID, err)
+			return fmt.Errorf("decoding drink %s: %w", drinkDrink, err)
 		}
 		d.ID = doc.Ref.ID
 
