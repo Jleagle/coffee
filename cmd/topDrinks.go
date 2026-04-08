@@ -31,7 +31,7 @@ var topDrinksCmd = &cobra.Command{
 		iter := client.Collection("order").Where("status", "==", "completed").Documents(ctx)
 		defer iter.Stop()
 
-		orders, err := firebase.LoadRows(iter, &firebase.Order{})
+		orders, err := firebase.LoadRows[*firebase.Order](iter)
 		if err != nil {
 			return fmt.Errorf("loading orders: %w", err)
 		}
@@ -50,7 +50,7 @@ var topDrinksCmd = &cobra.Command{
 		iter = client.Collection("drinks").Documents(ctx)
 		defer iter.Stop()
 
-		drinksM, err := firebase.LoadRows(iter, &firebase.Drink{})
+		drinksM, err := firebase.LoadRows[*firebase.Drink](iter)
 		if err != nil {
 			return fmt.Errorf("loading orders: %w", err)
 		}

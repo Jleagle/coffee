@@ -81,7 +81,7 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	iter := q.OrderBy("orderTimestamp", firestore.Asc).Documents(ctx)
 	defer iter.Stop()
 
-	ordersMap, err := firebase.LoadRows(iter, &firebase.Order{})
+	ordersMap, err := firebase.LoadRows[*firebase.Order](iter)
 	if err != nil {
 		return fmt.Errorf("loading orders: %w", err)
 	}

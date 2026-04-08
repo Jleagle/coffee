@@ -266,7 +266,7 @@ func GetAuth(printer func(format string, a ...any)) (*session.Session, error) {
 	return s, nil
 }
 
-func LoadRows[T Modeler](iter *firestore.DocumentIterator, _ T) (map[string]T, error) {
+func LoadRows[T Modeler](iter *firestore.DocumentIterator) (map[string]T, error) {
 
 	m := map[string]T{}
 	for {

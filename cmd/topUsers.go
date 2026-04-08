@@ -41,7 +41,7 @@ var topCmd = &cobra.Command{
 		iter := query.Documents(ctx)
 		defer iter.Stop()
 
-		orders, err := firebase.LoadRows(iter, &firebase.Order{})
+		orders, err := firebase.LoadRows[*firebase.Order](iter)
 		if err != nil {
 			return fmt.Errorf("loading orders: %w", err)
 		}

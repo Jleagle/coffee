@@ -44,7 +44,7 @@ var optionsCmd = &cobra.Command{
 
 			iter := client.Collection(coll).Documents(ctx)
 
-			options, err := firebase.LoadRows(iter, &firebase.Option{})
+			options, err := firebase.LoadRows[*firebase.Option](iter)
 			if err != nil {
 				return fmt.Errorf("loading %s: %w", coll, err)
 			}

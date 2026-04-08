@@ -33,7 +33,7 @@ var drinksCmd = &cobra.Command{
 		iter := client.Collection("drinkCategories").Documents(ctx)
 		defer iter.Stop()
 
-		categories, err := firebase.LoadRows(iter, &firebase.DrinkCategory{})
+		categories, err := firebase.LoadRows[*firebase.DrinkCategory](iter)
 		if err != nil {
 			return fmt.Errorf("loading categories: %w", err)
 		}
@@ -42,7 +42,7 @@ var drinksCmd = &cobra.Command{
 		iter = client.Collection("drinks").OrderBy("name", firestore.Asc).Limit(100).Documents(ctx)
 		defer iter.Stop()
 
-		rows, err := firebase.LoadRows(iter, &firebase.Drink{})
+		rows, err := firebase.LoadRows[*firebase.Drink](iter)
 		if err != nil {
 			return fmt.Errorf("loading categories: %w", err)
 		}
