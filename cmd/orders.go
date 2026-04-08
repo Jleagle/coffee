@@ -20,13 +20,15 @@ import (
 )
 
 var (
-	ordersWatch bool
-	ordersMine  bool
+	ordersWatch     bool
+	ordersMine      bool
+	ordersCancelled bool
 )
 
 func init() {
 	ordersCmd.Flags().BoolVarP(&ordersWatch, "watch", "w", false, "Refresh every 10 seconds")
 	ordersCmd.Flags().BoolVarP(&ordersMine, "mine", "m", false, "Show only your orders")
+	ordersCmd.Flags().BoolVarP(&ordersCancelled, "cancelled", "c", false, "Show cancelled orders")
 	RootCmd.AddCommand(ordersCmd)
 }
 
@@ -73,8 +75,8 @@ var ordersCmd = &cobra.Command{
 
 func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Client, sess *session.Session) error {
 
-	q := client.Collection("order").
-		Where("orderTimestamp", ">", time.Now().Truncate(24*time.Hour).UnixMilli()) // Start of day
+	start := time.Now().Truncate(24 * time.Hour).UnixMilli()
+	q := client.Collection("order").Where("orderTimestamp", ">", start)
 	if ordersMine {
 		q = q.Where("userId", "==", sess.UID)
 	}
@@ -88,6 +90,9 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 
 	orders := make([]*firebase.Order, 0, len(ordersMap))
 	for _, o := range ordersMap {
+		if !ordersCancelled && o.Status == "cancelled" {
+			continue
+		}
 		orders = append(orders, o)
 	}
 	slices.SortFunc(orders, func(a, b *firebase.Order) int {
@@ -101,6 +106,7 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 
 	var buf bytes.Buffer
 	tbl := table.New("Order", "Time", "Name", "Drink", "Status").WithWriter(&buf)
+
 	for k, o := range orders {
 		ts := time.UnixMilli(o.OrderTimestamp).Format(time.TimeOnly)
 		tbl.AddRow(k+1, ts, o.UserName, o.DrinkName, o.Status)
