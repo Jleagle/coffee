@@ -15,8 +15,8 @@ func init() {
 }
 
 var drinkCmd = &cobra.Command{
-	Use:   "drink [ID]",
-	Short: "Show details for a specific drink",
+	Use:   "drink --drink [id]",
+	Short: "Show drink information",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 

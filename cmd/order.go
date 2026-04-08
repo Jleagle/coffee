@@ -22,8 +22,8 @@ func init() {
 }
 
 var orderCmd = &cobra.Command{
-	Use:   "order",
-	Short: "Order a drink by its ID",
+	Use:   "order --drink [id]",
+	Short: "Order a drink",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt)

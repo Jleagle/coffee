@@ -16,7 +16,7 @@ func init() {
 
 var optionsCmd = &cobra.Command{
 	Use:   "options",
-	Short: "List available drink options (beans, milks, syrups, etc.)",
+	Short: "List beans, milks, cups, syrups, sugars, toppings, extras & categories",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		_, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)

@@ -33,7 +33,7 @@ func init() {
 var ordersCmd = &cobra.Command{
 	Use:     "queue",
 	Aliases: []string{"orders"},
-	Short:   "List your orders",
+	Short:   "Show todays queue",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt)

@@ -23,7 +23,7 @@ func init() {
 
 var topCmd = &cobra.Command{
 	Use:   "top-users",
-	Short: "Leaderboard of most orders in the last 28 days",
+	Short: "List users by number of orders",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		sess, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)

@@ -18,7 +18,7 @@ func init() {
 
 var drinksCmd = &cobra.Command{
 	Use:   "drinks",
-	Short: "List available drinks",
+	Short: "List drink IDs",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		_, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)
