@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -27,18 +26,15 @@ var topCmd = &cobra.Command{
 	Short: "Leaderboard of most orders in the last 28 days",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		ctx := context.Background()
-		sess, client, err := firebase.AuthedClient(ctx, cmd.Printf)
+		sess, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)
 		if err != nil {
 			return err
 		}
 		defer client.Close()
 
 		// Load orders
-		query := client.Collection("order").
-			Where("orderTimestamp", ">", time.Now().AddDate(0, 0, -topDays).UnixMilli())
-
-		iter := query.Documents(ctx)
+		start := time.Now().AddDate(0, 0, -topDays).UnixMilli()
+		iter := client.Collection("order").Where("orderTimestamp", ">", start).Documents(cmd.Context())
 		defer iter.Stop()
 
 		orders, err := firebase.LoadRows[*firebase.Order](iter)

@@ -26,7 +26,9 @@ var orderCmd = &cobra.Command{
 	Short: "Order a drink by its ID",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		ctx := context.Background()
+		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt)
+		defer cancel()
+
 		sess, client, err := firebase.AuthedClient(ctx, cmd.Printf)
 		if err != nil {
 			return err

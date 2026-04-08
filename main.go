@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	_ "time/tzdata"
@@ -26,7 +27,9 @@ func main() {
 		}
 	}
 
-	if err := cmd.RootCmd.Execute(); err != nil {
+	ctx := context.Background()
+
+	if err := cmd.RootCmd.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
 }

@@ -36,7 +36,7 @@ var ordersCmd = &cobra.Command{
 	Short:   "List your orders",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt)
 		defer cancel()
 
 		sess, client, err := firebase.AuthedClient(ctx, cmd.Printf)

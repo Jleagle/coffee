@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 	"slices"
 
@@ -20,15 +19,14 @@ var topDrinksCmd = &cobra.Command{
 	Short: "List drinks by popularity",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		ctx := context.Background()
-		_, client, err := firebase.AuthedClient(ctx, cmd.Printf)
+		_, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)
 		if err != nil {
 			return err
 		}
 		defer client.Close()
 
 		// Load orders
-		iter := client.Collection("order").Where("status", "==", "completed").Documents(ctx)
+		iter := client.Collection("order").Where("status", "==", "completed").Documents(cmd.Context())
 		defer iter.Stop()
 
 		orders, err := firebase.LoadRows[*firebase.Order](iter)
@@ -47,7 +45,7 @@ var topDrinksCmd = &cobra.Command{
 		}
 
 		// Load drinks
-		iter = client.Collection("drinks").Documents(ctx)
+		iter = client.Collection("drinks").Documents(cmd.Context())
 		defer iter.Stop()
 
 		drinksM, err := firebase.LoadRows[*firebase.Drink](iter)

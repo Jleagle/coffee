@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -21,9 +20,7 @@ var drinkCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		drinkID := args[0]
-		ctx := context.Background()
-		_, client, err := firebase.AuthedClient(ctx, cmd.Printf)
+		_, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)
 		if err != nil {
 			return err
 		}

@@ -19,8 +19,7 @@ var optionsCmd = &cobra.Command{
 	Short: "List available drink options (beans, milks, syrups, etc.)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		ctx := context.Background()
-		_, client, err := firebase.AuthedClient(ctx, cmd.Printf)
+		_, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)
 		if err != nil {
 			return err
 		}
@@ -42,7 +41,7 @@ var optionsCmd = &cobra.Command{
 
 		for coll, title := range optionCollections {
 
-			iter := client.Collection(coll).Documents(ctx)
+			iter := client.Collection(coll).Documents(cmd.Context())
 
 			options, err := firebase.LoadRows[*firebase.Option](iter)
 			if err != nil {
