@@ -38,7 +38,7 @@ type OrderOption struct {
 	OptionName string                 `firestore:"optionName"`
 	OptionRef  *firestore.DocumentRef `firestore:"optionRef"`
 	OptionID   string                 `firestore:"optionId"`
-	Count      int                    `firestore:"count,omitempty"`
+	Count      int                    `firestore:"count"`
 }
 
 type Drink struct {
