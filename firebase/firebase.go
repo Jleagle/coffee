@@ -161,7 +161,7 @@ func newFirestoreClient(ctx context.Context, idToken string) (*firestore.Client,
 	return client, nil
 }
 
-func refreshIDToken(refreshToken string) (newIDToken, newRefreshToken string, err error) {
+func GetToken(refreshToken string) (newIDToken, newRefreshToken string, err error) {
 	payload := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s", refreshToken)
 	apiURL := "https://securetoken.googleapis.com/v1/token?key=" + varAPIKey
 	resp, err := http.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(payload))
@@ -178,10 +178,7 @@ func refreshIDToken(refreshToken string) (newIDToken, newRefreshToken string, er
 		return "", "", fmt.Errorf("token refresh returned %d: %s", resp.StatusCode, body)
 	}
 
-	var result struct {
-		IDToken      string `json:"id_token"`
-		RefreshToken string `json:"refresh_token"`
-	}
+	var result Token
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", "", fmt.Errorf("parsing refresh response: %w", err)
 	}
@@ -191,58 +188,57 @@ func refreshIDToken(refreshToken string) (newIDToken, newRefreshToken string, er
 	if result.RefreshToken == "" {
 		result.RefreshToken = refreshToken
 	}
+
 	return result.IDToken, result.RefreshToken, nil
 }
 
-func LookupFirebaseUser(idToken string) (localID, email string, err error) {
-	payload := map[string]string{"idToken": idToken}
-	data, err := json.Marshal(payload)
+func GetAccount(idToken string) (account Account, err error) {
+
+	data, err := json.Marshal(map[string]string{"idToken": idToken})
 	if err != nil {
-		return "", "", fmt.Errorf("marshalling lookup payload: %w", err)
+		return account, fmt.Errorf("marshalling lookup payload: %w", err)
 	}
 
 	apiURL := "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + varAPIKey
 	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(data))
 	if err != nil {
-		return "", "", fmt.Errorf("POST to accounts:lookup: %w", err)
+		return account, fmt.Errorf("POST to accounts:lookup: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("reading lookup response: %w", err)
+		return account, fmt.Errorf("reading lookup response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("accounts:lookup returned %d: %s", resp.StatusCode, body)
+		return account, fmt.Errorf("accounts:lookup returned %d: %s", resp.StatusCode, body)
 	}
 
 	var result struct {
-		Users []struct {
-			LocalID string `json:"localId"`
-			Email   string `json:"email"`
-		} `json:"users"`
+		Users []Account `json:"users"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", "", fmt.Errorf("parsing lookup response: %w", err)
+		return account, fmt.Errorf("parsing lookup response: %w", err)
 	}
 	if len(result.Users) == 0 {
-		return "", "", fmt.Errorf("no user found for token")
+		return account, fmt.Errorf("no user found for token")
 	}
-	return result.Users[0].LocalID, result.Users[0].Email, nil
+
+	return result.Users[0], nil
 }
 
 // GetAuth returns a valid session with Firebase ID token.
 func GetAuth(printer func(format string, a ...any)) (*session.Session, error) {
 	s, err := session.Load()
 	if err == nil {
-		_, _, err := LookupFirebaseUser(s.IDToken)
+		_, err := GetAccount(s.IDToken)
 		if err == nil {
 			//printer("Authenticated as: %s (%s)\n", s.Email, s.UID)
 			return s, nil
 		}
 
 		printer("Session expired, refreshing...\n")
-		newID, newRefresh, err := refreshIDToken(s.RefreshToken)
+		newID, newRefresh, err := GetToken(s.RefreshToken)
 		if err == nil {
 			s.IDToken = newID
 			s.RefreshToken = newRefresh

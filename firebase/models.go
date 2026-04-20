@@ -1,6 +1,10 @@
 package firebase
 
-import "cloud.google.com/go/firestore"
+import (
+	"time"
+
+	"cloud.google.com/go/firestore"
+)
 
 type Modeler interface {
 	GetID() string
@@ -61,4 +65,35 @@ type DrinkCategory struct {
 	Base
 	Name  string `firestore:"name"`
 	Order int    `firestore:"order"`
+}
+
+type Account struct {
+	LocalID          string `json:"localId"`
+	Email            string `json:"email"`
+	DisplayName      string `json:"displayName"`
+	PhotoURL         string `json:"photoUrl"`
+	EmailVerified    bool   `json:"emailVerified"`
+	ProviderUserInfo []struct {
+		ProviderID  string `json:"providerId"`
+		DisplayName string `json:"displayName"`
+		PhotoUrl    string `json:"photoUrl"`
+		FederatedID string `json:"federatedId"`
+		Email       string `json:"email"`
+		RawID       string `json:"rawId"`
+	} `json:"providerUserInfo"`
+	ValidSince    string    `json:"validSince"`
+	LastLoginAt   string    `json:"lastLoginAt"`
+	CreatedAt     string    `json:"createdAt"`
+	CustomAuth    bool      `json:"customAuth"`
+	LastRefreshAt time.Time `json:"lastRefreshAt"`
+}
+
+type Token struct {
+	AccessToken  string `json:"access_token"`
+	ExpiresIn    string `json:"expires_in"`
+	TokenType    string `json:"token_type"`
+	RefreshToken string `json:"refresh_token"`
+	IDToken      string `json:"id_token"`
+	UserID       string `json:"user_id"`
+	ProjectID    string `json:"project_id"`
 }
