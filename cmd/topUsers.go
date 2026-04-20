@@ -106,7 +106,10 @@ var topCmd = &cobra.Command{
 		tbl.Print()
 
 		// Apply colours
-		out := strings.ReplaceAll(buf.String(), sess.DisplayName, color.HiBlueString(sess.DisplayName))
+		out := buf.String()
+		if sess.DisplayName != "" {
+			out = strings.ReplaceAll(out, sess.DisplayName, color.HiBlueString(sess.DisplayName))
+		}
 
 		// Output
 		_, err = fmt.Fprint(cmd.OutOrStdout(), out)

@@ -116,7 +116,9 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	// Apply colours
 	out := strings.ReplaceAll(buf.String(), "cancelled", color.HiRedString("cancelled"))
 	out = strings.ReplaceAll(out, "completed", color.HiGreenString("completed"))
-	out = strings.ReplaceAll(out, sess.DisplayName, color.HiBlueString(sess.DisplayName))
+	if sess.DisplayName != "" {
+		out = strings.ReplaceAll(out, sess.DisplayName, color.HiBlueString(sess.DisplayName))
+	}
 
 	_, err = fmt.Fprint(cmd.OutOrStdout(), out)
 	if err != nil {
