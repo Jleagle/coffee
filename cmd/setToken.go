@@ -45,7 +45,7 @@ var setTokenCmd = &cobra.Command{
 			return fmt.Errorf("saving session: %w", err)
 		}
 
-		cmd.Printf("Session saved for %s (%s)\n", account.Email, account.LocalID)
+		cmd.Println("User set to %s (%s)", account.Email, account.LocalID)
 		return nil
 	},
 }
