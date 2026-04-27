@@ -105,11 +105,11 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	}
 
 	var buf bytes.Buffer
-	tbl := table.New("Order", "Time", "Name", "Drink", "Status").WithWriter(&buf)
+	tbl := table.New("#", "Time", "Name", "Drink", "Status", "ID").WithWriter(&buf)
 
 	for k, o := range orders {
 		ts := time.UnixMilli(o.OrderTimestamp).Format(time.TimeOnly)
-		tbl.AddRow(k+1, ts, o.UserName, o.DrinkName, o.Status)
+		tbl.AddRow(k+1, ts, o.UserName, o.DrinkName, o.Status, o.ID)
 	}
 	tbl.Print()
 
