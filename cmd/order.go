@@ -70,6 +70,11 @@ var orderCmd = &cobra.Command{
 			}
 		}
 
+		// Wait for shop to open
+		if err := firebase.WaitForShopOpen(ctx, client, cmd.Printf); err != nil {
+			return err
+		}
+
 		// Payload
 		order := firebase.Order{
 			UserName:       sess.DisplayName,

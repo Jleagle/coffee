@@ -286,3 +286,38 @@ func LoadRows[T Modeler](iter *firestore.DocumentIterator) (map[string]T, error)
 
 	return m, nil
 }
+
+func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func(format string, a ...any)) error {
+	doc := client.Collection("coffeeShop").Doc("info")
+
+	// Initial check
+	snap, err := doc.Get(ctx)
+	if err != nil {
+		return fmt.Errorf("reading shop status: %w", err)
+	}
+	var info ShopInfo
+	if err := snap.DataTo(&info); err != nil {
+		return fmt.Errorf("decoding shop status: %w", err)
+	}
+	if info.Open {
+		return nil
+	}
+
+	printer("The coffee shop is currently closed. Waiting for it to open...\n")
+
+	iter := doc.Snapshots(ctx)
+	defer iter.Stop()
+	for {
+		snap, err := iter.Next()
+		if err != nil {
+			return fmt.Errorf("listening for shop status: %w", err)
+		}
+		if err := snap.DataTo(&info); err != nil {
+			return fmt.Errorf("decoding shop status: %w", err)
+		}
+		if info.Open {
+			printer("The coffee shop is now open!\n")
+			return nil
+		}
+	}
+}

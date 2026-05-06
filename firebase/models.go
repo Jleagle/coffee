@@ -45,6 +45,11 @@ type OrderOption struct {
 	Count      int                    `firestore:"count"`
 }
 
+type ShopInfo struct {
+	Base
+	Open bool `firestore:"open"`
+}
+
 type Drink struct {
 	Base
 	DefaultOptions  map[string]any           `firestore:"defaultOptions"`
