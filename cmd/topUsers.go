@@ -128,6 +128,7 @@ var topCmd = &cobra.Command{
 		}
 
 		// Output
+		cmd.Println("Top users in the last", topUsersDays, "days:")
 		_, err = fmt.Fprint(cmd.OutOrStdout(), out)
 		if err != nil {
 			return err
