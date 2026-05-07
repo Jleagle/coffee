@@ -14,12 +14,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var topDays int
-var topLimit int
+var topUsersDays int
+var topUsersLimit int
+var topUsersShots bool
 
 func init() {
-	topCmd.Flags().IntVarP(&topDays, "days", "d", 28, "Days to look back")
-	topCmd.Flags().IntVarP(&topLimit, "limit", "l", 20, "How many people to show")
+	topCmd.Flags().IntVarP(&topUsersDays, "days", "d", 28, "Days to look back")
+	topCmd.Flags().IntVarP(&topUsersLimit, "limit", "l", 20, "How many people to show")
+	topCmd.Flags().BoolVarP(&topUsersShots, "shots", "s", false, "Order by shots")
 	RootCmd.AddCommand(topCmd)
 }
 
@@ -35,7 +37,7 @@ var topCmd = &cobra.Command{
 		defer client.Close()
 
 		// Load orders
-		start := time.Now().AddDate(0, 0, -topDays).UnixMilli()
+		start := time.Now().AddDate(0, 0, -topUsersDays).UnixMilli()
 		iter := client.Collection("order").Where("orderTimestamp", ">", start).Documents(cmd.Context())
 		defer iter.Stop()
 
@@ -47,6 +49,7 @@ var topCmd = &cobra.Command{
 		type userTally struct {
 			Name  string
 			Count int
+			Shots int
 		}
 
 		counts := map[string]*userTally{}
@@ -57,10 +60,19 @@ var topCmd = &cobra.Command{
 			if order.UserID == "" {
 				continue
 			}
+
+			shots := 1
+			for _, opt := range order.Options {
+				if opt.Collection == "beans" {
+					shots = opt.Count
+				}
+			}
+
 			if t, ok := counts[order.UserID]; ok {
 				t.Count++
+				t.Shots += shots
 			} else {
-				counts[order.UserID] = &userTally{Name: order.UserName, Count: 1}
+				counts[order.UserID] = &userTally{Name: order.UserName, Count: 1, Shots: shots}
 			}
 		}
 
@@ -74,33 +86,37 @@ var topCmd = &cobra.Command{
 			UserID string
 			Name   string
 			Count  int
+			Shots  int
 		}
 		var entries []entry
 		for uid, t := range counts {
-			entries = append(entries, entry{UserID: uid, Name: t.Name, Count: t.Count})
+			entries = append(entries, entry{UserID: uid, Name: t.Name, Count: t.Count, Shots: t.Shots})
 		}
 		slices.SortFunc(entries, func(i, j entry) int {
+			if topUsersShots {
+				return cmp.Compare(j.Shots, i.Shots)
+			}
 			return cmp.Compare(j.Count, i.Count)
 		})
 
 		// Build content
 		var buf bytes.Buffer
-		tbl := table.New("#", "Name", "Orders").WithWriter(&buf)
+		tbl := table.New("#", "Name", "Orders", "Shots").WithWriter(&buf)
 
 		myRank := -1
 		for i, e := range entries {
 			if e.UserID == sess.UID {
 				myRank = i
 			}
-			if i < topLimit {
-				tbl.AddRow(i+1, e.Name, e.Count)
+			if i < topUsersLimit {
+				tbl.AddRow(i+1, e.Name, e.Count, e.Shots)
 			}
 		}
 
 		// Show own row if outside top 20
-		if myRank >= topLimit {
-			tbl.AddRow("", "---", "---")
-			tbl.AddRow(myRank+1, entries[myRank].Name, entries[myRank].Count)
+		if myRank >= topUsersLimit {
+			tbl.AddRow("", "---", "---", "---")
+			tbl.AddRow(myRank+1, entries[myRank].Name, entries[myRank].Count, entries[myRank].Shots)
 		}
 
 		tbl.Print()
