@@ -317,6 +317,7 @@ func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func
 		}
 		if info.Open {
 			printer("The coffee shop is now open!\n")
+			_ = exec.Command("afplay", "/System/Library/Sounds/Funk.aiff").Run()
 			return nil
 		}
 	}
