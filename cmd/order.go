@@ -59,14 +59,20 @@ var orderCmd = &cobra.Command{
 				}
 			}
 			orderAt = time.Date(orderAt.Year(), orderAt.Month(), orderAt.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, orderAt.Location())
+		}
 
-			if wait := time.Until(orderAt); wait > 0 {
-				cmd.Printf("Waiting until %s to place order...\n", orderAt.Format("15:04:05"))
-				select {
-				case <-time.After(wait):
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+		// Don't order before 08:30
+		openingTime := time.Date(orderAt.Year(), orderAt.Month(), orderAt.Day(), 8, 30, 0, 0, orderAt.Location())
+		if orderAt.Before(openingTime) {
+			orderAt = openingTime
+		}
+
+		if wait := time.Until(orderAt); wait > 0 {
+			cmd.Printf("Waiting until %s to place order...\n", orderAt.Format("15:04:05"))
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return ctx.Err()
 			}
 		}
 
