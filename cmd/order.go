@@ -13,11 +13,13 @@ import (
 var (
 	orderDrinkID string
 	orderTime    string
+	orderDouble  bool
 )
 
 func init() {
 	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "", "Drink document ID (required)")
 	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM or HH:MM:SS format (default: now)")
+	orderCmd.Flags().BoolVar(&orderDouble, "double", false, "Double shot")
 	orderCmd.MarkFlagRequired("drink")
 	RootCmd.AddCommand(orderCmd)
 }
@@ -82,16 +84,29 @@ var orderCmd = &cobra.Command{
 		}
 
 		// Payload
+		count := 1
+		if orderDouble {
+			count = 2
+		}
+
 		order := firebase.Order{
 			UserName:       sess.DisplayName,
 			UserEmail:      sess.Email,
 			UserID:         sess.UID,
 			OrderTimestamp: orderAt.UnixMilli(),
-			Options:        []firebase.OrderOption{},
-			Status:         "queuing",
-			DrinkName:      drink.Name,
-			DrinkID:        orderDrinkID,
-			LastUpdated:    orderAt.UnixMilli(),
+			Options: []firebase.OrderOption{
+				{
+					Collection: "beans",
+					OptionName: "Medium Roast",
+					OptionID:   "vyZITIjN1jTOUYkVikfN",
+					OptionRef:  client.Collection("beans").Doc("vyZITIjN1jTOUYkVikfN"),
+					Count:      count,
+				},
+			},
+			Status:      "queuing",
+			DrinkName:   drink.Name,
+			DrinkID:     orderDrinkID,
+			LastUpdated: orderAt.UnixMilli(),
 		}
 
 		_, _, err = client.Collection("order").Add(ctx, order)
