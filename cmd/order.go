@@ -4,22 +4,30 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/Jleagle/coffee/firebase"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
+)
+
+const (
+	optionMediumRoast = "vyZITIjN1jTOUYkVikfN"
 )
 
 var (
 	orderDrinkID string
 	orderTime    string
 	orderDouble  bool
+	orderOptions []string
 )
 
 func init() {
 	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "", "Drink document ID (required)")
 	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM or HH:MM:SS format (default: now)")
 	orderCmd.Flags().BoolVar(&orderDouble, "double", false, "Double shot")
+	orderCmd.Flags().StringSliceVarP(&orderOptions, "option", "o", []string{optionMediumRoast}, "Option IDs")
 	orderCmd.MarkFlagRequired("drink")
 	RootCmd.AddCommand(orderCmd)
 }
@@ -83,10 +91,51 @@ var orderCmd = &cobra.Command{
 			return err
 		}
 
+		// Resolve options
+		optionCollections := []string{"beans", "milks", "cup_choices", "syrups", "sugars", "toppings", "extras"}
+		allOptions := make(map[string]firebase.OrderOption)
+		var mu sync.Mutex
+		wg, ctx := errgroup.WithContext(ctx)
+
+		for _, coll := range optionCollections {
+			coll := coll
+			wg.Go(func() error {
+				iter := client.Collection(coll).Documents(ctx)
+				items, err := firebase.LoadRows[*firebase.Option](iter)
+				if err != nil {
+					return fmt.Errorf("loading %s: %w", coll, err)
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				for id, item := range items {
+					allOptions[id] = firebase.OrderOption{
+						Collection: coll,
+						OptionName: item.Name,
+						OptionID:   id,
+						OptionRef:  client.Collection(coll).Doc(id),
+						Count:      1,
+					}
+				}
+				return nil
+			})
+		}
+
+		if err := wg.Wait(); err != nil {
+			return err
+		}
+
 		// Payload
-		count := 1
-		if orderDouble {
-			count = 2
+		var finalOptions []firebase.OrderOption
+		for _, optID := range orderOptions {
+			if opt, ok := allOptions[optID]; ok {
+				// Set count for beans if double is set
+				if optID == optionMediumRoast && orderDouble {
+					opt.Count = 2
+				}
+				finalOptions = append(finalOptions, opt)
+			} else {
+				return fmt.Errorf("option %s not found", optID)
+			}
 		}
 
 		order := firebase.Order{
@@ -94,19 +143,11 @@ var orderCmd = &cobra.Command{
 			UserEmail:      sess.Email,
 			UserID:         sess.UID,
 			OrderTimestamp: orderAt.UnixMilli(),
-			Options: []firebase.OrderOption{
-				{
-					Collection: "beans",
-					OptionName: "Medium Roast",
-					OptionID:   "vyZITIjN1jTOUYkVikfN",
-					OptionRef:  client.Collection("beans").Doc("vyZITIjN1jTOUYkVikfN"),
-					Count:      count,
-				},
-			},
-			Status:      "queuing",
-			DrinkName:   drink.Name,
-			DrinkID:     orderDrinkID,
-			LastUpdated: orderAt.UnixMilli(),
+			Options:        finalOptions,
+			Status:         "queuing",
+			DrinkName:      drink.Name,
+			DrinkID:        orderDrinkID,
+			LastUpdated:    orderAt.UnixMilli(),
 		}
 
 		_, _, err = client.Collection("order").Add(ctx, order)
