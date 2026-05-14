@@ -6,6 +6,17 @@ import (
 	"cloud.google.com/go/firestore"
 )
 
+const (
+	CollBeans           = "beans"
+	CollMilks           = "milks"
+	CollCupChoices      = "cup_choices"
+	CollSyrups          = "syrups"
+	CollSugars          = "sugars"
+	CollToppings        = "toppings"
+	CollExtras          = "extras"
+	CollDrinkCategories = "drinkCategories"
+)
+
 type Modeler interface {
 	GetID() string
 	SetID(doc *firestore.DocumentSnapshot)

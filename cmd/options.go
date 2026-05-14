@@ -26,14 +26,14 @@ var optionsCmd = &cobra.Command{
 		defer client.Close()
 
 		var optionCollections = map[string]string{
-			"beans":           "Beans",
-			"milks":           "Milks",
-			"cup_choices":     "Cups",
-			"syrups":          "Syrups",
-			"sugars":          "Sugars",
-			"toppings":        "Toppings",
-			"extras":          "Extras",
-			"drinkCategories": "Categories",
+			firebase.CollBeans:           "Beans",
+			firebase.CollMilks:           "Milks",
+			firebase.CollCupChoices:      "Cups",
+			firebase.CollSyrups:          "Syrups",
+			firebase.CollSugars:          "Sugars",
+			firebase.CollToppings:        "Toppings",
+			firebase.CollExtras:          "Extras",
+			firebase.CollDrinkCategories: "Categories",
 		}
 
 		tbl := table.New("Collection", "ID", "Name").WithWriter(cmd.OutOrStdout())

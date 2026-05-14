@@ -77,6 +77,7 @@ var orderCmd = &cobra.Command{
 			orderAt = openingTime
 		}
 
+		// Wait for order time
 		if wait := time.Until(orderAt); wait > 0 {
 			cmd.Printf("Waiting until %s to place order...\n", orderAt.Format("15:04:05"))
 			select {
@@ -92,13 +93,12 @@ var orderCmd = &cobra.Command{
 		}
 
 		// Resolve options
-		optionCollections := []string{"beans", "milks", "cup_choices", "syrups", "sugars", "toppings", "extras"}
-		allOptions := make(map[string]firebase.OrderOption)
 		var mu sync.Mutex
-		wg, ctx := errgroup.WithContext(ctx)
+		var wg errgroup.Group
+		var collections = []string{firebase.CollBeans, firebase.CollMilks, firebase.CollCupChoices, firebase.CollSyrups, firebase.CollSugars, firebase.CollToppings, firebase.CollExtras}
 
-		for _, coll := range optionCollections {
-			coll := coll
+		var allOptions = make(map[string]firebase.OrderOption)
+		for _, coll := range collections {
 			wg.Go(func() error {
 				iter := client.Collection(coll).Documents(ctx)
 				items, err := firebase.LoadRows[*firebase.Option](iter)
@@ -108,13 +108,20 @@ var orderCmd = &cobra.Command{
 				mu.Lock()
 				defer mu.Unlock()
 				for id, item := range items {
-					allOptions[id] = firebase.OrderOption{
+					option := firebase.OrderOption{
 						Collection: coll,
 						OptionName: item.Name,
 						OptionID:   id,
 						OptionRef:  client.Collection(coll).Doc(id),
-						Count:      1,
+						Count: func() int {
+							if coll == firebase.CollBeans && orderDouble {
+								return 2
+							}
+							return 1
+						}(),
 					}
+					allOptions[id] = option
+					allOptions[item.Name] = option
 				}
 				return nil
 			})
@@ -125,17 +132,16 @@ var orderCmd = &cobra.Command{
 		}
 
 		// Payload
-		var finalOptions []firebase.OrderOption
+		optionsByCollection := make(map[string]firebase.OrderOption)
 		for _, optID := range orderOptions {
 			if opt, ok := allOptions[optID]; ok {
-				// Set count for beans if double is set
-				if optID == optionMediumRoast && orderDouble {
-					opt.Count = 2
-				}
-				finalOptions = append(finalOptions, opt)
-			} else {
-				return fmt.Errorf("option %s not found", optID)
+				optionsByCollection[opt.Collection] = opt
 			}
+		}
+
+		var finalOptions []firebase.OrderOption
+		for _, opt := range optionsByCollection {
+			finalOptions = append(finalOptions, opt)
 		}
 
 		order := firebase.Order{
