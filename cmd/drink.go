@@ -32,16 +32,10 @@ var drinkCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		doc, err := client.Collection("drinks").Doc(drinkDrink).Get(cmd.Context())
+		d, err := firebase.LoadRow[*firebase.Drink](cmd.Context(), client, "drinks", drinkDrink)
 		if err != nil {
 			return fmt.Errorf("reading drink %s: %w", drinkDrink, err)
 		}
-
-		var d firebase.Drink
-		if err := doc.DataTo(&d); err != nil {
-			return fmt.Errorf("decoding drink %s: %w", drinkDrink, err)
-		}
-		d.ID = doc.Ref.ID
 
 		b, err := json.MarshalIndent(d, "", "  ")
 		fmt.Println(string(b))

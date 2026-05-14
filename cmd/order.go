@@ -47,16 +47,10 @@ var orderCmd = &cobra.Command{
 		defer client.Close()
 
 		// Read the drink
-		doc, err := client.Collection("drinks").Doc(orderDrinkID).Get(ctx)
+		drink, err := firebase.LoadRow[*firebase.Drink](ctx, client, "drinks", orderDrinkID)
 		if err != nil {
 			return fmt.Errorf("reading drink %s: %w", orderDrinkID, err)
 		}
-
-		var drink firebase.Drink
-		if err := doc.DataTo(&drink); err != nil {
-			return fmt.Errorf("decoding drink %s: %w", orderDrinkID, err)
-		}
-		drink.ID = doc.Ref.ID
 
 		// Resolve order time
 		orderAt := time.Now()

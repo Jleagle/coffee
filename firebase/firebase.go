@@ -158,12 +158,10 @@ func LoadRows[T Modeler](iter *firestore.DocumentIterator) (map[string]T, error)
 			return nil, err
 		}
 
-		var d T
-		if err := doc.DataTo(&d); err != nil {
+		d, err := loadRow[T](doc)
+		if err != nil {
 			return nil, fmt.Errorf("decoding category %s: %w", doc.Ref.ID, err)
 		}
-
-		d.SetID(doc)
 
 		m[d.GetID()] = d
 	}
@@ -171,17 +169,35 @@ func LoadRows[T Modeler](iter *firestore.DocumentIterator) (map[string]T, error)
 	return m, nil
 }
 
+func LoadRow[T Modeler](ctx context.Context, client *firestore.Client, collection string, id string) (T, error) {
+	var d T
+	snap, err := client.Collection(collection).Doc(id).Get(ctx)
+	if err != nil {
+		return d, err
+	}
+	if err := snap.DataTo(&d); err != nil {
+		return d, err
+	}
+	d.SetID(snap)
+	return d, nil
+}
+
+func loadRow[T Modeler](snap *firestore.DocumentSnapshot) (T, error) {
+	var d T
+	if err := snap.DataTo(&d); err != nil {
+		return d, err
+	}
+	d.SetID(snap)
+	return d, nil
+}
+
 func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func(format string, a ...any)) error {
 	doc := client.Collection("coffeeShop").Doc("info")
 
 	// Initial check
-	snap, err := doc.Get(ctx)
+	info, err := LoadRow[*ShopInfo](ctx, client, "coffeeShop", "info")
 	if err != nil {
 		return fmt.Errorf("reading shop status: %w", err)
-	}
-	var info ShopInfo
-	if err := snap.DataTo(&info); err != nil {
-		return fmt.Errorf("decoding shop status: %w", err)
 	}
 	if info.Open {
 		return nil
@@ -196,7 +212,8 @@ func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func
 		if err != nil {
 			return fmt.Errorf("listening for shop status: %w", err)
 		}
-		if err := snap.DataTo(&info); err != nil {
+		info, err := loadRow[*ShopInfo](snap)
+		if err != nil {
 			return fmt.Errorf("decoding shop status: %w", err)
 		}
 		if info.Open {
