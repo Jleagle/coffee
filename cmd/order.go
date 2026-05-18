@@ -20,6 +20,7 @@ var (
 	orderDrinkID string
 	orderTime    string
 	orderDouble  bool
+	orderTriple  bool
 	orderOptions []string
 )
 
@@ -27,6 +28,7 @@ func init() {
 	orderCmd.Flags().StringVarP(&orderDrinkID, "drink", "d", "", "Drink document ID (required)")
 	orderCmd.Flags().StringVarP(&orderTime, "time", "t", "", "Order time in HH:MM or HH:MM:SS format (default: now)")
 	orderCmd.Flags().BoolVar(&orderDouble, "double", false, "Double shot")
+	orderCmd.Flags().BoolVar(&orderTriple, "triple", false, "Triple shot")
 	orderCmd.Flags().StringSliceVarP(&orderOptions, "option", "o", []string{optionMediumRoast}, "Option IDs")
 	orderCmd.MarkFlagRequired("drink")
 	RootCmd.AddCommand(orderCmd)
@@ -108,8 +110,13 @@ var orderCmd = &cobra.Command{
 						OptionID:   id,
 						OptionRef:  client.Collection(coll).Doc(id),
 						Count: func() int {
-							if coll == firebase.CollBeans && orderDouble {
-								return 2
+							if coll == firebase.CollBeans {
+								if orderTriple {
+									return 3
+								}
+								if orderDouble {
+									return 2
+								}
 							}
 							return 1
 						}(),
