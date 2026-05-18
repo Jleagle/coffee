@@ -158,11 +158,11 @@ func LoadRows[T Modeler](iter *firestore.DocumentIterator) (map[string]T, error)
 			return nil, err
 		}
 
-		d, err := loadRow[T](doc)
-		if err != nil {
-			return nil, fmt.Errorf("decoding category %s: %w", doc.Ref.ID, err)
+		var d T
+		if err := doc.DataTo(&d); err != nil {
+			return nil, fmt.Errorf("decoding row %s: %w", doc.Ref.ID, err)
 		}
-
+		d.SetID(doc)
 		m[d.GetID()] = d
 	}
 
@@ -175,15 +175,6 @@ func LoadRow[T Modeler](ctx context.Context, client *firestore.Client, collectio
 	if err != nil {
 		return d, err
 	}
-	if err := snap.DataTo(&d); err != nil {
-		return d, err
-	}
-	d.SetID(snap)
-	return d, nil
-}
-
-func loadRow[T Modeler](snap *firestore.DocumentSnapshot) (T, error) {
-	var d T
 	if err := snap.DataTo(&d); err != nil {
 		return d, err
 	}
@@ -212,10 +203,12 @@ func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func
 		if err != nil {
 			return fmt.Errorf("listening for shop status: %w", err)
 		}
-		info, err := loadRow[*ShopInfo](snap)
-		if err != nil {
+
+		var info ShopInfo
+		if err := snap.DataTo(&info); err != nil {
 			return fmt.Errorf("decoding shop status: %w", err)
 		}
+
 		if info.Open {
 			printer("The coffee shop is now open!\n")
 			_ = exec.Command("afplay", "/System/Library/Sounds/Funk.aiff").Run()
