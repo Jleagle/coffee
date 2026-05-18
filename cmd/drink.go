@@ -32,17 +32,17 @@ var drinkCmd = &cobra.Command{
 		}
 		defer client.Close()
 
-		d, err := firebase.LoadRow[*firebase.Drink](cmd.Context(), client, "drinks", drinkDrink)
+		drink, err := firebase.LoadRow[*firebase.Drink](cmd.Context(), client, "drinks", drinkDrink)
 		if err != nil {
 			return fmt.Errorf("reading drink %s: %w", drinkDrink, err)
 		}
 
-		b, err := json.MarshalIndent(d, "", "  ")
+		b, err := json.MarshalIndent(drink, "", "  ")
 		fmt.Println(string(b))
 
-		cmd.Println("Required options: " + strings.Join(d.RequiredOptions, ", "))
+		cmd.Println("Required options: " + strings.Join(drink.RequiredOptions, ", "))
 		cmd.Println("Defaults: ")
-		for k, v := range d.DefaultOptions {
+		for k, v := range drink.DefaultOptions {
 
 			x := v.(*firestore.DocumentRef)
 
