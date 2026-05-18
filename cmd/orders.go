@@ -109,7 +109,16 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 
 	for k, o := range orders {
 		ts := time.UnixMilli(o.OrderTimestamp).Format(time.TimeOnly)
-		tbl.AddRow(k+1, ts, o.UserName, o.DrinkName, o.Status)
+
+		drinkName := o.DrinkName
+		for _, opt := range o.Options {
+			if opt.Collection == firebase.CollBeans && opt.Count > 1 {
+				drinkName += fmt.Sprintf(" x%d", opt.Count)
+				break
+			}
+		}
+
+		tbl.AddRow(k+1, ts, o.UserName, drinkName, o.Status)
 	}
 	tbl.Print()
 
