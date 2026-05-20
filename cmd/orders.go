@@ -16,18 +16,17 @@ import (
 	"github.com/Jleagle/coffee/session"
 	"github.com/fatih/color"
 	"github.com/rodaine/table"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
 
 var (
 	ordersWatch     bool
-	ordersMine      bool
 	ordersCancelled bool
 )
 
 func init() {
 	ordersCmd.Flags().BoolVarP(&ordersWatch, "watch", "w", false, "Refresh every 10 seconds")
-	ordersCmd.Flags().BoolVarP(&ordersMine, "mine", "m", false, "Show only your orders")
 	ordersCmd.Flags().BoolVarP(&ordersCancelled, "cancelled", "c", false, "Show cancelled orders")
 	RootCmd.AddCommand(ordersCmd)
 }
@@ -77,9 +76,6 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 
 	start := time.Now().Truncate(24 * time.Hour).UnixMilli()
 	q := client.Collection("order").Where("orderTimestamp", ">", start)
-	if ordersMine {
-		q = q.Where("userId", "==", sess.UID)
-	}
 	iter := q.OrderBy("orderTimestamp", firestore.Asc).Documents(ctx)
 	defer iter.Stop()
 
@@ -88,21 +84,22 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 		return fmt.Errorf("loading orders: %w", err)
 	}
 
-	orders := make([]*firebase.Order, 0, len(ordersMap))
-	for _, o := range ordersMap {
-		if !ordersCancelled && o.Status == "cancelled" {
-			continue
-		}
-		orders = append(orders, o)
-	}
-	slices.SortFunc(orders, func(a, b *firebase.Order) int {
-		return cmp.Compare(a.OrderTimestamp, b.OrderTimestamp)
+	orders := lo.Values(ordersMap)
+
+	// Filter cancelled
+	orders = lo.Filter(orders, func(o *firebase.Order, _ int) bool {
+		return !(!ordersCancelled && o.Status == "cancelled")
 	})
 
 	if len(orders) == 0 {
 		cmd.Println("No orders found today.")
 		return nil
 	}
+
+	// Sort by time
+	slices.SortFunc(orders, func(a, b *firebase.Order) int {
+		return cmp.Compare(a.OrderTimestamp, b.OrderTimestamp)
+	})
 
 	var buf bytes.Buffer
 	tbl := table.New("#", "Time", "Name", "Drink", "Status").WithWriter(&buf)
@@ -133,6 +130,13 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 	if err != nil {
 		return err
 	}
+
+	// Show queue size
+	queuingCount := lo.CountBy(orders, func(o *firebase.Order) bool {
+		return o.Status == "queuing" || o.Status == "being-prepared"
+	})
+
+	cmd.Printf("\nPeople queuing: %d\n", queuingCount+1)
 
 	if ordersWatch {
 		cmd.Printf("\nLast updated: %s (Ctrl+C to stop)\n", time.Now().Format("15:04:05"))

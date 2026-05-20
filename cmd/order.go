@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Jleagle/coffee/firebase"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -162,7 +163,22 @@ var orderCmd = &cobra.Command{
 			return fmt.Errorf("creating order: %w", err)
 		}
 
-		cmd.Println("Order created successfully!")
+		// Calculate queue position
+		ordersIter := client.Collection("order").
+			Where("orderTimestamp", ">", orderAt.Truncate(24*time.Hour).UnixMilli()).
+			Documents(ctx)
+		defer ordersIter.Stop()
+
+		orders, err := firebase.LoadRows[*firebase.Order](ordersIter)
+		if err != nil {
+			return fmt.Errorf("getting queue position: %w", err)
+		}
+
+		queuingCount := lo.PickBy(orders, func(key string, o *firebase.Order) bool {
+			return o.Status == "queuing" || o.Status == "being-prepared"
+		})
+
+		cmd.Printf("Order created successfully! Queue position: %d\n", len(queuingCount)+1)
 		return nil
 	},
 }
