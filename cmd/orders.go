@@ -136,7 +136,7 @@ func printOrders(ctx context.Context, cmd *cobra.Command, client *firestore.Clie
 		return o.Status == "queuing" || o.Status == "being-prepared"
 	})
 
-	cmd.Printf("\nPeople queuing: %d\n", queuingCount+1)
+	cmd.Printf("\n%d people in queue\n", queuingCount)
 
 	if ordersWatch {
 		cmd.Printf("\nLast updated: %s (Ctrl+C to stop)\n", time.Now().Format("15:04:05"))
