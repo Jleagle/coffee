@@ -85,8 +85,12 @@ var orderCmd = &cobra.Command{
 		}
 
 		// Wait for shop to open
-		if err := firebase.WaitForShopOpen(ctx, client, cmd.Printf); err != nil {
+		waited, err := firebase.WaitForShopOpen(ctx, client, cmd.Printf)
+		if err != nil {
 			return err
+		}
+		if waited {
+			orderAt = time.Now()
 		}
 
 		// Resolve options
@@ -166,6 +170,7 @@ var orderCmd = &cobra.Command{
 		// Calculate queue position
 		ordersIter := client.Collection("order").
 			Where("orderTimestamp", ">", orderAt.Truncate(24*time.Hour).UnixMilli()).
+			Where("orderTimestamp", "<", orderAt.UnixMilli()).
 			Documents(ctx)
 		defer ordersIter.Stop()
 

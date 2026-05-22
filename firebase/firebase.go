@@ -182,16 +182,16 @@ func LoadRow[T Modeler](ctx context.Context, client *firestore.Client, collectio
 	return d, nil
 }
 
-func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func(format string, a ...any)) error {
+func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func(format string, a ...any)) (bool, error) {
 	doc := client.Collection("coffeeShop").Doc("info")
 
 	// Initial check
 	info, err := LoadRow[*ShopInfo](ctx, client, "coffeeShop", "info")
 	if err != nil {
-		return fmt.Errorf("reading shop status: %w", err)
+		return false, fmt.Errorf("reading shop status: %w", err)
 	}
 	if info.Open {
-		return nil
+		return false, nil
 	}
 
 	printer("The coffee shop is currently closed. Waiting for it to open...\n")
@@ -201,18 +201,18 @@ func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func
 	for {
 		snap, err := iter.Next()
 		if err != nil {
-			return fmt.Errorf("listening for shop status: %w", err)
+			return false, fmt.Errorf("listening for shop status: %w", err)
 		}
 
 		var info ShopInfo
 		if err := snap.DataTo(&info); err != nil {
-			return fmt.Errorf("decoding shop status: %w", err)
+			return false, fmt.Errorf("decoding shop status: %w", err)
 		}
 
 		if info.Open {
 			printer("The coffee shop is now open!\n")
 			_ = exec.Command("afplay", "/System/Library/Sounds/Funk.aiff").Run()
-			return nil
+			return true, nil
 		}
 	}
 }
