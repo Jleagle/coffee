@@ -14,6 +14,7 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/Jleagle/coffee/session"
+	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -182,7 +183,7 @@ func LoadRow[T Modeler](ctx context.Context, client *firestore.Client, collectio
 	return d, nil
 }
 
-func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func(format string, a ...any)) (bool, error) {
+func WaitForShopOpen(ctx context.Context, client *firestore.Client, cmd *cobra.Command) (bool, error) {
 	doc := client.Collection("coffeeShop").Doc("info")
 
 	// Initial check
@@ -194,7 +195,7 @@ func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func
 		return false, nil
 	}
 
-	printer("The coffee shop is currently closed. Waiting for it to open...\n")
+	cmd.Printf("The coffee shop is currently closed. Waiting for it to open...\n")
 
 	iter := doc.Snapshots(ctx)
 	defer iter.Stop()
@@ -210,7 +211,7 @@ func WaitForShopOpen(ctx context.Context, client *firestore.Client, printer func
 		}
 
 		if info.Open {
-			printer("The coffee shop is now open!\n")
+			cmd.Printf("The coffee shop is now open!\n")
 			_ = exec.Command("afplay", "/System/Library/Sounds/Funk.aiff").Run()
 			return true, nil
 		}
