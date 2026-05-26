@@ -48,8 +48,11 @@ var drinksCmd = &cobra.Command{
 		var drinks []firebase.Drink
 		for _, drink := range rows {
 			for _, v := range drink.Categories {
-				drink.Categories = []*firestore.DocumentRef{v}
-				drinks = append(drinks, *drink)
+				name := categories[v.ID].Name
+				if name == "hot" || name == "cold" {
+					drink.Categories = []*firestore.DocumentRef{v}
+					drinks = append(drinks, *drink)
+				}
 			}
 		}
 
