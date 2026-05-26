@@ -96,10 +96,9 @@ var orderCmd = &cobra.Command{
 		// Resolve options
 		var mu sync.Mutex
 		var wg errgroup.Group
-		var collections = []string{firebase.CollBeans, firebase.CollMilks, firebase.CollCupChoices, firebase.CollSyrups, firebase.CollSugars, firebase.CollToppings, firebase.CollExtras}
 
 		var allOptions = make(map[string]firebase.OrderOption)
-		for _, coll := range collections {
+		for _, coll := range firebase.OptionCollections {
 			wg.Go(func() error {
 				iter := client.Collection(coll).Documents(ctx)
 				items, err := firebase.LoadRows[*firebase.Option](iter)

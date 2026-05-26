@@ -15,7 +15,7 @@ func init() {
 
 var optionsCmd = &cobra.Command{
 	Use:   "options",
-	Short: "List beans, milks, cups, syrups, sugars, toppings, extras & categories",
+	Short: "List beans, milks, cups, syrups, sugars, toppings & extras",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		_, client, err := firebase.AuthedClient(cmd.Context(), cmd.Printf)
@@ -25,20 +25,9 @@ var optionsCmd = &cobra.Command{
 
 		defer client.Close()
 
-		var optionCollections = map[string]string{
-			firebase.CollBeans:           "Beans",
-			firebase.CollMilks:           "Milks",
-			firebase.CollCupChoices:      "Cups",
-			firebase.CollSyrups:          "Syrups",
-			firebase.CollSugars:          "Sugars",
-			firebase.CollToppings:        "Toppings",
-			firebase.CollExtras:          "Extras",
-			firebase.CollDrinkCategories: "Categories",
-		}
-
 		tbl := table.New("Collection", "ID", "Name").WithWriter(cmd.OutOrStdout())
 
-		for coll, title := range optionCollections {
+		for coll, title := range firebase.OptionCollections {
 
 			iter := client.Collection(coll).Documents(cmd.Context())
 

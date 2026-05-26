@@ -9,13 +9,23 @@ import (
 const (
 	CollBeans           = "beans"
 	CollMilks           = "milks"
-	CollCupChoices      = "cup_choices"
+	CollCups            = "cup_choices"
 	CollSyrups          = "syrups"
 	CollSugars          = "sugars"
 	CollToppings        = "toppings"
 	CollExtras          = "extras"
 	CollDrinkCategories = "drinkCategories"
 )
+
+var OptionCollections = map[string]string{
+	CollBeans:    "Beans",
+	CollMilks:    "Milks",
+	CollCups:     "Cups",
+	CollSyrups:   "Syrups",
+	CollSugars:   "Sugars",
+	CollToppings: "Toppings",
+	CollExtras:   "Extras",
+}
 
 type Modeler interface {
 	GetID() string
