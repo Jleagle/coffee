@@ -1,0 +1,93 @@
+import Foundation
+
+enum ShopState {
+    case unknown, open, closed
+}
+
+struct AppConfig: Sendable {
+    let projectID: String
+    let apiKey: String
+    var database: String { "projects/\(projectID)/databases/(default)" }
+}
+
+// Mirrors firebase.OptionCollections in the Go CLI, in display order.
+let optionCollections: [(coll: String, title: String)] = [
+    ("beans", "Beans"),
+    ("milks", "Milk"),
+    ("cup_choices", "Cup"),
+    ("syrups", "Syrup"),
+    ("sugars", "Sugar"),
+    ("toppings", "Topping"),
+    ("extras", "Extra"),
+]
+
+struct DrinkCategory: Sendable {
+    let id: String
+    let name: String
+    let order: Int
+}
+
+struct Drink: Sendable {
+    let id: String
+    let name: String
+    let categoryID: String
+    let optionGroups: Set<String>
+    let requiredOptions: Set<String>
+    let defaultOptionIDs: [String: String] // collection -> option doc ID
+}
+
+struct OptionItem: Sendable {
+    let id: String
+    let name: String
+}
+
+struct SelectedOption: Sendable {
+    let collection: String
+    let id: String
+    let name: String
+    let count: Int
+}
+
+struct Catalog: Sendable {
+    let drinks: [Drink]
+    let categories: [String: DrinkCategory]
+    let options: [String: [OptionItem]]
+}
+
+// Stored under "last_order" in ~/.coffee.json (shared with the Go CLI's session file).
+struct LastOrder: Codable, Sendable {
+    var drinkID: String
+    var drinkName: String
+    var shots: Int
+    var options: [LastOrderOption]
+    var placedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case drinkID = "drink_id"
+        case drinkName = "drink_name"
+        case shots
+        case options
+        case placedAt = "placed_at"
+    }
+
+    var summary: String {
+        var s = drinkName
+        if shots == 2 { s += " (Double)" }
+        if shots == 3 { s += " (Triple)" }
+        return s
+    }
+
+    var optionsSummary: String {
+        options.map { opt in
+            let count = opt.count ?? 1
+            return count > 1 ? "\(opt.name) ×\(count)" : opt.name
+        }.joined(separator: ", ")
+    }
+}
+
+struct LastOrderOption: Codable, Sendable {
+    var collection: String
+    var id: String
+    var name: String
+    var count: Int?
+}
