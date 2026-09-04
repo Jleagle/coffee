@@ -125,10 +125,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func reorder(_ order: LastOrder) {
         guard let orderService else { return }
-        guard status.shop == .open else {
-            alert(title: "Shop is closed", text: "You can reorder once the shop opens.")
-            return
-        }
         Task { @MainActor in
             do {
                 let options = order.options.map {

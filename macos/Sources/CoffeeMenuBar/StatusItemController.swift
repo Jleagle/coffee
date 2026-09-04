@@ -166,10 +166,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(shopLine())
 
-        if let queuing, let ordersToday {
-            let noun = queuing == 1 ? "person" : "people"
-            menu.addItem(disabledItem("\(queuing) \(noun) in queue · \(ordersToday) orders today"))
-        }
         if let lastRefreshError {
             let err = disabledItem("Refresh failed")
             err.toolTip = lastRefreshError
@@ -179,26 +175,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         for (index, order) in recentOrders.enumerated() {
-            // ⌘R always reorders the most recent order; older ones are click-only.
-            let reorder = NSMenuItem(title: "Reorder \(order.summary)", action: #selector(reorderClicked(_:)), keyEquivalent: index == 0 ? "r" : "")
+            // ⌘O always reorders the most recent order; older ones are click-only.
+            let reorder = NSMenuItem(title: "Reorder \(order.summary)", action: #selector(reorderClicked(_:)), keyEquivalent: index == 0 ? "o" : "")
             reorder.target = self
             reorder.toolTip = order.optionsSummary
             reorder.representedObject = order
-            reorder.isEnabled = shop == .open
-            if shop != .open {
-                reorder.title += shop == .closed ? " (shop closed)" : " (status unknown)"
-            }
             menu.addItem(reorder)
         }
 
-        if !queueOrders.isEmpty {
-            menu.addItem(disabledItem("Queue"))
-            for order in queueOrders {
-                menu.addItem(disabledItem("\(order.userName) — \(order.drinkName)"))
-            }
-        }
-
-        if !recentOrders.isEmpty || !queueOrders.isEmpty {
+        if !recentOrders.isEmpty {
             menu.addItem(.separator())
         }
 
@@ -206,14 +191,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         newOrder.target = self
         menu.addItem(newOrder)
 
-        menu.addItem(.separator())
-
-        let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshClicked), keyEquivalent: "")
+        let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshClicked), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
 
-        menu.addItem(.separator())
         menu.addItem(quitItem())
+
+        if !queueOrders.isEmpty {
+            menu.addItem(.separator())
+            for (index, order) in queueOrders.enumerated() {
+                menu.addItem(disabledItem("\(index + 1). \(order.userName) — \(order.drinkName)"))
+            }
+        }
     }
 
     private func shopLine() -> NSMenuItem {
@@ -225,8 +214,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         }()
         let item = disabledItem("")
+        var line = text
+        if let ordersToday {
+            line += " · \(ordersToday) orders today"
+        }
         let title = NSMutableAttributedString(string: "● ", attributes: [.foregroundColor: color])
-        title.append(NSAttributedString(string: text, attributes: [.foregroundColor: NSColor.labelColor]))
+        title.append(NSAttributedString(string: line, attributes: [.foregroundColor: NSColor.labelColor]))
         item.attributedTitle = title
         return item
     }
@@ -238,11 +231,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func quitItem() -> NSMenuItem {
-        let quit = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.target = NSApp
+        // A custom action rather than terminate(_:) — macOS 26 auto-adds an
+        // icon to standard-selector items, misaligning it with the rest.
+        let quit = NSMenuItem(title: "Quit", action: #selector(quitClicked), keyEquivalent: "q")
+        quit.target = self
         return quit
     }
 
+    @objc private func quitClicked() { NSApp.terminate(nil) }
     @objc private func newOrderClicked() { onNewOrder?() }
     @objc private func refreshClicked() { onRefresh?() }
 

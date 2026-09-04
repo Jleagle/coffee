@@ -5,8 +5,9 @@ let package = Package(
     name: "coffee",
     platforms: [.macOS(.v13)],
     products: [
-        // Installed by the Homebrew formula as libexec/coffee; the Go CLI owns
-        // the `coffee` name in bin.
+        // Wrapped into Coffee.app by the release workflow (installed to
+        // /Applications by the Homebrew cask); the Go CLI owns the `coffee`
+        // name in bin.
         .executable(name: "coffee-menubar", targets: ["CoffeeMenuBar"]),
     ],
     targets: [

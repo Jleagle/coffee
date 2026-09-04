@@ -95,14 +95,16 @@ final class OrderWindowController: NSWindowController {
 
         grid = NSGridView(views: rows)
         grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 1).xPlacement = .fill
         grid.rowSpacing = 8
         grid.columnSpacing = 12
+        // One fixed width shared by every popup so no dropdown (e.g. toppings,
+        // with its long option names) grows wider than the rest.
         for popup in [drinkPopup, shotsPopup] + Array(optionPopups.values) {
-            popup.widthAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+            popup.widthAnchor.constraint(equalToConstant: 250).isActive = true
         }
 
         statusLabel.textColor = .secondaryLabelColor
-        statusLabel.preferredMaxLayoutWidth = 380
 
         orderButton.target = self
         orderButton.action = #selector(placeClicked)
@@ -125,7 +127,9 @@ final class OrderWindowController: NSWindowController {
         stack.alignment = .leading
         stack.spacing = 14
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        bottomRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40).isActive = true
+        // The form (grid) dictates the window width; the status line and the
+        // bottom row stay within it so both margins come out equal.
+        bottomRow.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
 
         window?.contentView = stack
         setControls(enabled: false)
@@ -139,6 +143,8 @@ final class OrderWindowController: NSWindowController {
 
     private func resize() {
         guard let window else { return }
+        grid.layoutSubtreeIfNeeded()
+        statusLabel.preferredMaxLayoutWidth = grid.fittingSize.width
         stack.layoutSubtreeIfNeeded()
         window.setContentSize(stack.fittingSize)
     }
@@ -338,17 +344,15 @@ final class OrderWindowController: NSWindowController {
             guard let row = optionRowIndex[coll], !grid.row(at: row).isHidden else { continue }
             if selectedOption(coll) == nil { complete = false }
         }
-        orderButton.isEnabled = complete && shopState == .open && catalog != nil
+        orderButton.isEnabled = complete && catalog != nil
     }
 
     private func updateStatusLine() {
         guard !placing else { return }
         switch shopState {
         case .closed:
-            statusLabel.stringValue = "The shop is closed — ordering will enable as soon as it opens."
-        case .unknown:
-            statusLabel.stringValue = catalog == nil ? "Loading menu…" : "Waiting for shop status…"
-        case .open:
+            statusLabel.stringValue = catalog == nil ? "Loading menu…" : "The shop is closed — orders will be waiting when it opens."
+        case .unknown, .open:
             statusLabel.stringValue = catalog == nil ? "Loading menu…" : ""
         }
     }
