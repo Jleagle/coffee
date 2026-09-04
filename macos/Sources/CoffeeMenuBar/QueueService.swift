@@ -1,5 +1,11 @@
 import Foundation
 
+/// One order currently in the queue, for the dropdown's queue section.
+struct QueuedOrder: Sendable {
+    let userName: String
+    let drinkName: String
+}
+
 /// Polls today's orders once a minute and reports the queue size, using the
 /// same query and counting rules as the CLI's `queue` command.
 final class QueueService: @unchecked Sendable {
@@ -10,8 +16,12 @@ final class QueueService: @unchecked Sendable {
     private var burstUntil = Date.distantPast
     private var lastRefresh = Date.distantPast
 
-    /// (people queuing, non-cancelled orders today) — called on the main queue.
-    var onUpdate: ((Int, Int) -> Void)?
+    /// (people queuing, non-cancelled orders today, queuing orders oldest
+    /// first) — called on the main queue.
+    var onUpdate: ((Int, Int, [QueuedOrder]) -> Void)?
+    /// Doc ID → status for every order fetched today — called on the main
+    /// queue, so completions of orders this app placed can be noticed.
+    var onStatuses: (([String: String]) -> Void)?
     var onError: ((String) -> Void)?
 
     init(client: FirestoreClient) {
@@ -84,16 +94,30 @@ final class QueueService: @unchecked Sendable {
                 "orderBy": [["field": ["fieldPath": "orderTimestamp"], "direction": "ASCENDING"]],
             ])
 
-            var queuing = 0
             var total = 0
+            var queued: [QueuedOrder] = []
+            var statuses: [String: String] = [:]
             for doc in docs {
                 let fields = doc["fields"] as? [String: Any] ?? [:]
                 let status = FS.string(fields, "status") ?? ""
+                if let name = doc["name"] as? String {
+                    statuses[FS.lastPathComponent(name)] = status
+                }
                 if status != "cancelled" { total += 1 }
-                if status == "queuing" || status == "being-prepared" { queuing += 1 }
+                if status == "queuing" || status == "being-prepared" {
+                    // The query orders by orderTimestamp ascending, so `queued`
+                    // is already oldest first.
+                    queued.append(QueuedOrder(
+                        userName: FS.string(fields, "userName") ?? "?",
+                        drinkName: FS.string(fields, "drinkName") ?? "?"
+                    ))
+                }
             }
-            log("queue refresh: \(queuing) queuing, \(total) orders today")
-            DispatchQueue.main.async { [onUpdate] in onUpdate?(queuing, total) }
+            log("queue refresh: \(queued.count) queuing, \(total) orders today")
+            DispatchQueue.main.async { [onUpdate, onStatuses] in
+                onUpdate?(queued.count, total, queued)
+                onStatuses?(statuses)
+            }
         } catch {
             let msg = error.localizedDescription
             log("queue refresh failed: \(msg)")

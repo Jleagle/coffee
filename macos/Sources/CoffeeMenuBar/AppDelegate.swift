@@ -43,14 +43,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.client = client
         self.orderService = OrderService(client: client, session: sessionStore, config: config)
 
-        status.lastOrder = await sessionStore.lastOrder()
+        status.recentOrders = await sessionStore.recentOrders()
         status.onNewOrder = { [weak self] in self?.showOrderWindow() }
-        status.onReorder = { [weak self] in self?.reorder() }
+        status.onReorder = { [weak self] order in self?.reorder(order) }
         status.onRefresh = { [weak self] in self?.queue?.refreshNow() }
 
         let queue = QueueService(client: client)
-        queue.onUpdate = { [weak self] queuing, ordersToday in
-            self?.status.setQueue(queuing: queuing, ordersToday: ordersToday)
+        queue.onUpdate = { [weak self] queuing, ordersToday, orders in
+            self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: orders)
+        }
+        queue.onStatuses = { [weak self] statuses in
+            guard let self, let orderService = self.orderService else { return }
+            // Flash the icon when an order this app placed is completed.
+            if orderService.notePendingStatuses(statuses) {
+                self.status.startFlashing()
+            }
         }
         queue.onError = { [weak self] message in
             self?.status.setRefreshError(message)
@@ -105,8 +112,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let client, let orderService else { return }
         if orderWindow == nil {
             let controller = OrderWindowController(client: client, orderService: orderService)
-            controller.onPlaced = { [weak self] last in
-                self?.status.lastOrder = last
+            controller.onPlaced = { [weak self] _ in
+                self?.reloadRecentOrders()
                 self?.queue?.refreshNow()
             }
             orderWindow = controller
@@ -116,30 +123,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    private func reorder() {
-        guard let orderService, let lastOrder = status.lastOrder else { return }
+    private func reorder(_ order: LastOrder) {
+        guard let orderService else { return }
         guard status.shop == .open else {
             alert(title: "Shop is closed", text: "You can reorder once the shop opens.")
             return
         }
         Task { @MainActor in
             do {
-                let options = lastOrder.options.map {
+                let options = order.options.map {
                     SelectedOption(collection: $0.collection, id: $0.id, name: $0.name, count: $0.count ?? 1)
                 }
-                let (position, last) = try await orderService.place(
-                    drinkID: lastOrder.drinkID,
-                    drinkName: lastOrder.drinkName,
+                let (position, _) = try await orderService.place(
+                    drinkID: order.drinkID,
+                    drinkName: order.drinkName,
                     options: options,
-                    shots: lastOrder.shots
+                    shots: order.shots
                 )
-                status.lastOrder = last
+                reloadRecentOrders()
                 queue?.refreshNow()
                 let suffix = position.map { " You're number \($0) in the queue." } ?? ""
-                alert(title: "Order placed", text: "\(lastOrder.summary) ordered.\(suffix)")
+                alert(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
             } catch {
                 alert(title: "Order failed", text: error.localizedDescription)
             }
+        }
+    }
+
+    /// Re-reads the recent-orders list after OrderService saves a new entry, so
+    /// the menu reflects the latest ordering.
+    @MainActor
+    private func reloadRecentOrders() {
+        guard let session else { return }
+        Task { @MainActor in
+            status.recentOrders = await session.recentOrders()
         }
     }
 

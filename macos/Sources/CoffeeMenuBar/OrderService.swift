@@ -7,6 +7,11 @@ final class OrderService: @unchecked Sendable {
     private let session: SessionStore
     private let config: AppConfig
 
+    // Doc IDs of orders placed by this app that haven't finished yet, so the
+    // icon can flash when one completes. In-memory only; forgotten on restart.
+    private let pendingLock = NSLock()
+    private var pendingOrderIDs: Set<String> = []
+
     init(client: FirestoreClient, session: SessionStore, config: AppConfig) {
         self.client = client
         self.session = session
@@ -41,7 +46,8 @@ final class OrderService: @unchecked Sendable {
             "lastUpdatedTimestamp": FS.i(nowMs),
         ]
 
-        try await client.createDocument(collection: "order", fields: fields)
+        let name = try await client.createDocument(collection: "order", fields: fields)
+        trackPending(name)
 
         let position = try? await queuePosition(at: nowMs)
 
@@ -52,9 +58,36 @@ final class OrderService: @unchecked Sendable {
             options: options.map { LastOrderOption(collection: $0.collection, id: $0.id, name: $0.name, count: $0.count) },
             placedAt: ISO8601DateFormatter().string(from: Date())
         )
-        await session.saveLastOrder(last)
+        await session.saveRecentOrder(last)
 
         return (position, last)
+    }
+
+    private func trackPending(_ name: String) {
+        pendingLock.lock()
+        pendingOrderIDs.insert(FS.lastPathComponent(name))
+        pendingLock.unlock()
+    }
+
+    /// Checks the queue poll's doc ID → status map against the orders this app
+    /// placed. Returns true if any of them just completed; a cancelled order
+    /// stops being tracked without triggering anything.
+    func notePendingStatuses(_ statuses: [String: String]) -> Bool {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        var anyCompleted = false
+        for id in pendingOrderIDs {
+            switch statuses[id] {
+            case "completed":
+                pendingOrderIDs.remove(id)
+                anyCompleted = true
+            case "cancelled":
+                pendingOrderIDs.remove(id)
+            default:
+                break
+            }
+        }
+        return anyCompleted
     }
 
     private func queuePosition(at orderMs: Int64) async throws -> Int {

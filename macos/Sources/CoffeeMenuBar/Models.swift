@@ -54,7 +54,8 @@ struct Catalog: Sendable {
     let options: [String: [OptionItem]]
 }
 
-// Stored under "last_order" in ~/.coffee.json (shared with the Go CLI's session file).
+// Stored under "recent_orders" (newest first, max 5) in ~/.coffee.json,
+// shared with the Go CLI's session file.
 struct LastOrder: Codable, Sendable {
     var drinkID: String
     var drinkName: String
@@ -82,6 +83,15 @@ struct LastOrder: Codable, Sendable {
             let count = opt.count ?? 1
             return count > 1 ? "\(opt.name) ×\(count)" : opt.name
         }.joined(separator: ", ")
+    }
+
+    /// True when the other order is the same drink, shots and options — used to
+    /// dedupe the recent-orders list (a repeat order moves to the front).
+    func sameSelection(as other: LastOrder) -> Bool {
+        guard drinkID == other.drinkID, shots == other.shots, options.count == other.options.count else { return false }
+        return zip(options, other.options).allSatisfy {
+            $0.collection == $1.collection && $0.id == $1.id && ($0.count ?? 1) == ($1.count ?? 1)
+        }
     }
 }
 

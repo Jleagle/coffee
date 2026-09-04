@@ -16,13 +16,11 @@ type Session struct {
 
 	// Written by the macOS menu bar app (macos/). Declared here so Save
 	// doesn't drop them when the CLI rewrites the file on token refresh.
-	ProjectID string     `json:"project_id,omitempty"`
-	APIKey    string     `json:"api_key,omitempty"`
-	LastOrder *LastOrder `json:"last_order,omitempty"`
+	ProjectID    string      `json:"project_id,omitempty"`
+	APIKey       string      `json:"api_key,omitempty"`
+	RecentOrders []LastOrder `json:"recent_orders,omitempty"`
 }
 
-// LastOrder is the most recent order placed from the menu bar app, kept so it
-// can offer a one-click reorder.
 type LastOrder struct {
 	DrinkID   string            `json:"drink_id"`
 	DrinkName string            `json:"drink_name"`

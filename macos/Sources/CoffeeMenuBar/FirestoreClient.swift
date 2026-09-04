@@ -82,8 +82,15 @@ final class FirestoreClient: @unchecked Sendable {
         return rows.compactMap { $0["document"] as? [String: Any] }
     }
 
-    func createDocument(collection: String, fields: [String: Any]) async throws {
-        _ = try await send(method: "POST", url: "\(documentsBase)/\(collection)", body: ["fields": fields])
+    /// Returns the created document's full resource name
+    /// ("projects/.../documents/<collection>/<id>").
+    func createDocument(collection: String, fields: [String: Any]) async throws -> String {
+        let data = try await send(method: "POST", url: "\(documentsBase)/\(collection)", body: ["fields": fields])
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let name = obj["name"] as? String else {
+            throw FirestoreError(message: "unexpected create response for \(collection)")
+        }
+        return name
     }
 }
 

@@ -65,17 +65,35 @@ actor SessionStore {
         if changed { try? save() }
     }
 
-    func lastOrder() -> LastOrder? {
-        guard let obj = dict["last_order"],
-              let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
+    /// The most recent orders, newest first (max 5). Seeds itself from a
+    /// legacy single "last_order" entry when "recent_orders" hasn't been
+    /// written yet.
+    func recentOrders() -> [LastOrder] {
+        if let arr = dict["recent_orders"] as? [Any] {
+            return Array(arr.compactMap(Self.decodeOrder).prefix(5))
+        }
+        guard let obj = dict["last_order"], let last = Self.decodeOrder(obj) else { return [] }
+        return [last]
+    }
+
+    /// Puts the order at the front of "recent_orders" (replacing any entry with
+    /// the same drink/shots/options) and keeps at most 5.
+    func saveRecentOrder(_ order: LastOrder) {
+        var orders = recentOrders().filter { !$0.sameSelection(as: order) }
+        orders.insert(order, at: 0)
+        dict["recent_orders"] = orders.prefix(5).compactMap(Self.encodeOrder)
+        dict.removeValue(forKey: "last_order") // legacy key, superseded by recent_orders
+        try? save()
+    }
+
+    private static func decodeOrder(_ obj: Any) -> LastOrder? {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
         return try? JSONDecoder().decode(LastOrder.self, from: data)
     }
 
-    func saveLastOrder(_ order: LastOrder) {
-        guard let data = try? JSONEncoder().encode(order),
-              let obj = try? JSONSerialization.jsonObject(with: data) else { return }
-        dict["last_order"] = obj
-        try? save()
+    private static func encodeOrder(_ order: LastOrder) -> Any? {
+        guard let data = try? JSONEncoder().encode(order) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
     }
 
     // MARK: - Tokens

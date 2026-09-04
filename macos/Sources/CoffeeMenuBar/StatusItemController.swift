@@ -1,11 +1,13 @@
 import AppKit
 
-/// The menu bar item: a red/green coffee cup for shop status, the queue size
-/// as its title, and the dropdown menu.
+/// The menu bar item: a template coffee cup (crossed out while the shop is
+/// closed), the queue size as its title, and the dropdown menu.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let menu = NSMenu()
+    private var flashTimer: Timer?
+    private var flashDimmed = false
 
     private(set) var shop: ShopState = .unknown
     private var queuing: Int?
@@ -13,10 +15,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var setupError: String?
     private var lastRefreshError: String?
 
-    var lastOrder: LastOrder?
+    var recentOrders: [LastOrder] = []
+    private var queueOrders: [QueuedOrder] = []
 
     var onNewOrder: (() -> Void)?
-    var onReorder: (() -> Void)?
+    var onReorder: ((LastOrder) -> Void)?
     var onRefresh: (() -> Void)?
 
     override init() {
@@ -33,9 +36,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         render()
     }
 
-    func setQueue(queuing: Int, ordersToday: Int) {
+    func setQueue(queuing: Int, ordersToday: Int, orders: [QueuedOrder]) {
         self.queuing = queuing
         self.ordersToday = ordersToday
+        self.queueOrders = orders
         lastRefreshError = nil
         render()
     }
@@ -51,7 +55,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func render() {
         guard let button = item.button else { return }
-        button.image = Self.cup(color: Self.color(for: shop))
+        button.image = Self.icon(for: shop)
         button.imagePosition = .imageLeft
         button.title = queuing.map { " \($0)" } ?? ""
         switch shop {
@@ -61,35 +65,90 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private static func color(for state: ShopState) -> NSColor {
+    private static func icon(for state: ShopState) -> NSImage {
         switch state {
-        case .open: return .systemGreen
-        case .closed: return .systemRed
-        case .unknown: return .systemGray
+        case .open: return cup(filled: true)
+        case .closed: return slashedCup()
+        case .unknown: return cup(filled: false) // outline cup for "unknown"
         }
     }
 
-    private static func cup(color: NSColor) -> NSImage {
-        if let base = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Coffee") {
+    /// The cup as a standard template image, so it renders like every other
+    /// menu bar icon (light/dark menu bars, highlighted state).
+    private static func cup(filled: Bool) -> NSImage {
+        let name = filled ? "cup.and.saucer.fill" : "cup.and.saucer"
+        if let base = NSImage(systemSymbolName: name, accessibilityDescription: "Coffee") {
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-                .applying(.init(paletteColors: [color]))
             if let image = base.withSymbolConfiguration(config) {
-                image.isTemplate = false
+                image.isTemplate = true
                 return image
             }
         }
-        // Fallback if the symbol is unavailable: a plain coloured dot.
+        // Fallback if the symbol is unavailable: a plain dot.
         let size = NSSize(width: 12, height: 12)
         let image = NSImage(size: size, flipped: false) { rect in
-            color.setFill()
             NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill()
             return true
         }
-        image.isTemplate = false
+        image.isTemplate = true
         return image
     }
 
+    /// There is no "cup.and.saucer.slash" symbol, so composite one: the cup
+    /// with a diagonal line through it, knocking out a slightly wider band
+    /// first so the slash has a gap around it like Apple's .slash symbols.
+    /// Only the alpha channel matters for a template image, so it stays
+    /// monochrome.
+    private static func slashedCup() -> NSImage {
+        let base = cup(filled: true)
+        let image = NSImage(size: base.size, flipped: false) { rect in
+            base.draw(in: rect)
+            let slash = NSBezierPath()
+            slash.move(to: NSPoint(x: rect.minX + 2, y: rect.maxY - 1))
+            slash.line(to: NSPoint(x: rect.maxX - 2, y: rect.minY + 1))
+            slash.lineCapStyle = .round
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+            NSColor.black.setStroke()
+            ctx.setBlendMode(.destinationOut)
+            slash.lineWidth = 3.5
+            slash.stroke()
+            ctx.setBlendMode(.normal)
+            slash.lineWidth = 1.5
+            slash.stroke()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    // MARK: - Completion flash
+
+    /// Flashes the status item until the user opens the menu, to announce
+    /// that an order they placed has been completed.
+    func startFlashing() {
+        guard flashTimer == nil else { return } // already flashing; don't stack timers
+        flashTimer = Timer.scheduledTimer(timeInterval: 0.5, target: self, selector: #selector(flashTick), userInfo: nil, repeats: true)
+        flashTick()
+    }
+
+    @objc private func flashTick() {
+        flashDimmed.toggle()
+        item.button?.alphaValue = flashDimmed ? 0.25 : 1
+    }
+
+    private func stopFlashing() {
+        flashTimer?.invalidate()
+        flashTimer = nil
+        flashDimmed = false
+        item.button?.alphaValue = 1
+    }
+
     // MARK: - Menu
+
+    /// Opening the menu is the "seen it" signal that ends a completion flash.
+    func menuWillOpen(_ menu: NSMenu) {
+        stopFlashing()
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -119,15 +178,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        if let lastOrder {
-            let reorder = NSMenuItem(title: "Reorder \(lastOrder.summary)", action: #selector(reorderClicked), keyEquivalent: "r")
+        for (index, order) in recentOrders.enumerated() {
+            // ⌘R always reorders the most recent order; older ones are click-only.
+            let reorder = NSMenuItem(title: "Reorder \(order.summary)", action: #selector(reorderClicked(_:)), keyEquivalent: index == 0 ? "r" : "")
             reorder.target = self
-            reorder.toolTip = lastOrder.optionsSummary
+            reorder.toolTip = order.optionsSummary
+            reorder.representedObject = order
             reorder.isEnabled = shop == .open
             if shop != .open {
                 reorder.title += shop == .closed ? " (shop closed)" : " (status unknown)"
             }
             menu.addItem(reorder)
+        }
+
+        if !queueOrders.isEmpty {
+            menu.addItem(disabledItem("Queue"))
+            for order in queueOrders {
+                menu.addItem(disabledItem("\(order.userName) — \(order.drinkName)"))
+            }
+        }
+
+        if !recentOrders.isEmpty || !queueOrders.isEmpty {
+            menu.addItem(.separator())
         }
 
         let newOrder = NSMenuItem(title: "New Order…", action: #selector(newOrderClicked), keyEquivalent: "n")
@@ -166,12 +238,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func quitItem() -> NSMenuItem {
-        let quit = NSMenuItem(title: "Quit Coffee", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         return quit
     }
 
     @objc private func newOrderClicked() { onNewOrder?() }
-    @objc private func reorderClicked() { onReorder?() }
     @objc private func refreshClicked() { onRefresh?() }
+
+    @objc private func reorderClicked(_ sender: NSMenuItem) {
+        guard let order = sender.representedObject as? LastOrder else { return }
+        onReorder?(order)
+    }
 }
