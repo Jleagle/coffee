@@ -1,8 +1,7 @@
 # coffee
 
 ```
-brew install Jleagle/coffee/coffee
-brew services start coffee # menu bar app, now + at every login
+brew install --cask Jleagle/coffee/coffee
 ```
 
 Requires the `COFFEE_PROJECT_ID` and `COFFEE_API_KEY` environment variables,
