@@ -1,10 +1,12 @@
 # coffee
 
+### Install from Brew
+
 ```
 brew install --cask Jleagle/coffee/coffee
 ```
 
-### Develop:
+### Install from code
 
 ```
 swift run coffee-menubar
