@@ -7,14 +7,11 @@ struct SessionInfo: Sendable {
 }
 
 enum SessionError: LocalizedError {
-    case missingFile(String)
     case invalid(String)
     case refreshFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingFile(let path):
-            return "No session at \(path) — run `coffee set-token --token <refresh-token>` first"
         case .invalid(let msg):
             return msg
         case .refreshFailed(let msg):
@@ -33,14 +30,32 @@ actor SessionStore {
     init() throws {
         let url = Self.fileURL
         guard let data = try? Data(contentsOf: url) else {
-            throw SessionError.missingFile(url.path)
+            dict = [:] // no file yet — the browser sign-in flow will create it
+            return
         }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw SessionError.invalid("Could not parse \(url.path)")
         }
         dict = obj
-        guard dict["id_token"] is String, dict["refresh_token"] is String, dict["uid"] is String else {
-            throw SessionError.invalid("Incomplete session in \(url.path) — run `coffee set-token` first")
+    }
+
+    /// False until the browser sign-in flow (or the CLI's set-token) has
+    /// written tokens.
+    var hasSession: Bool {
+        value("id_token") != nil && value("refresh_token") != nil && value("uid") != nil
+    }
+
+    /// Writes the session produced by the browser sign-in flow.
+    func applyLogin(_ creds: LoginCredentials) {
+        dict["id_token"] = creds.idToken
+        dict["refresh_token"] = creds.refreshToken
+        dict["uid"] = creds.uid
+        dict["email"] = creds.email
+        dict["display_name"] = creds.displayName
+        do {
+            try save()
+        } catch {
+            log("could not save session: \(error.localizedDescription)")
         }
     }
 
@@ -54,15 +69,6 @@ actor SessionStore {
             email: value("email") ?? "",
             displayName: value("display_name") ?? ""
         )
-    }
-
-    /// Persists project ID / API key so the app works when launched outside a
-    /// shell (Finder, brew services) where the env vars aren't set.
-    func setConfigIfMissing(projectID: String, apiKey: String) {
-        var changed = false
-        if value("project_id") == nil { dict["project_id"] = projectID; changed = true }
-        if value("api_key") == nil { dict["api_key"] = apiKey; changed = true }
-        if changed { try? save() }
     }
 
     /// The most recent orders, newest first (max 5). Seeds itself from a

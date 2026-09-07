@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -20,16 +19,15 @@ import (
 	"google.golang.org/api/option"
 )
 
-var (
-	VarProjectID = os.Getenv("COFFEE_PROJECT_ID")
-	VarAPIKey    = os.Getenv("COFFEE_API_KEY")
+// Public Firebase web config — the same values ship in every web client, so
+// it's safe to embed. Kept in sync with the defaults in
+// macos/Sources/CoffeeMenuBar/Models.swift.
+const (
+	ProjectID = "protected-jbi-firebase"
+	APIKey    = "AIzaSyBKSStxYeu_ALi1tm6Fjfu4aW9RFu9PNNk"
 )
 
 func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*session.Session, *firestore.Client, error) {
-
-	if VarProjectID == "" {
-		return nil, nil, fmt.Errorf("required environment variable COFFEE_PROJECT_ID is not set")
-	}
 
 	sess, err := getAuth(printer)
 	if err != nil {
@@ -37,7 +35,7 @@ func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*
 	}
 
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: sess.IDToken, TokenType: "Bearer"})
-	client, err := firestore.NewClient(ctx, VarProjectID, option.WithTokenSource(ts))
+	client, err := firestore.NewClient(ctx, ProjectID, option.WithTokenSource(ts))
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating firestore client: %w", err)
 	}
@@ -47,12 +45,8 @@ func AuthedClient(ctx context.Context, printer func(format string, a ...any)) (*
 
 func GetToken(refreshToken string) (newIDToken, newRefreshToken string, err error) {
 
-	if VarAPIKey == "" {
-		return "", "", fmt.Errorf("required environment variable COFFEE_API_KEY is not set")
-	}
-
 	payload := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s", refreshToken)
-	apiURL := "https://securetoken.googleapis.com/v1/token?key=" + VarAPIKey
+	apiURL := "https://securetoken.googleapis.com/v1/token?key=" + APIKey
 	resp, err := http.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(payload))
 	if err != nil {
 		return "", "", fmt.Errorf("POST to token refresh: %w", err)
@@ -83,16 +77,12 @@ func GetToken(refreshToken string) (newIDToken, newRefreshToken string, err erro
 
 func GetAccount(idToken string) (account Account, err error) {
 
-	if VarAPIKey == "" {
-		return account, fmt.Errorf("required environment variable COFFEE_API_KEY is not set")
-	}
-
 	data, err := json.Marshal(map[string]string{"idToken": idToken})
 	if err != nil {
 		return account, fmt.Errorf("marshalling lookup payload: %w", err)
 	}
 
-	apiURL := "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + VarAPIKey
+	apiURL := "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + APIKey
 	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return account, fmt.Errorf("POST to accounts:lookup: %w", err)

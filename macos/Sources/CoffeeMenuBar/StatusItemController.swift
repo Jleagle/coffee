@@ -14,6 +14,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var ordersToday: Int?
     private var setupError: String?
     private var lastRefreshError: String?
+    private var signInAction: (() -> Void)?
 
     var recentOrders: [LastOrder] = []
     private var queueOrders: [QueuedOrder] = []
@@ -53,6 +54,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         render()
     }
 
+    /// Puts the menu into "sign in needed" mode; the action re-opens the
+    /// browser sign-in page.
+    func showSignIn(_ action: @escaping () -> Void) {
+        signInAction = action
+        render()
+    }
+
+    func clearSignIn() {
+        signInAction = nil
+        render()
+    }
+
     private func render() {
         guard let button = item.button else { return }
         button.image = Self.icon(for: shop)
@@ -61,7 +74,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch shop {
         case .open: button.toolTip = "Coffee shop is open"
         case .closed: button.toolTip = "Coffee shop is closed"
-        case .unknown: button.toolTip = setupError ?? "Coffee shop status unknown"
+        case .unknown:
+            button.toolTip = setupError ?? (signInAction != nil ? "Sign in to Coffee" : "Coffee shop status unknown")
         }
     }
 
@@ -164,6 +178,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
 
+        if signInAction != nil {
+            menu.addItem(disabledItem("Coffee — sign in needed"))
+            let signIn = NSMenuItem(title: "Sign In with Google…", action: #selector(signInClicked), keyEquivalent: "")
+            signIn.target = self
+            menu.addItem(signIn)
+            menu.addItem(.separator())
+            menu.addItem(quitItem())
+            return
+        }
+
         menu.addItem(shopLine())
 
         if let lastRefreshError {
@@ -241,6 +265,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func quitClicked() { NSApp.terminate(nil) }
     @objc private func newOrderClicked() { onNewOrder?() }
     @objc private func refreshClicked() { onRefresh?() }
+    @objc private func signInClicked() { signInAction?() }
 
     @objc private func reorderClicked(_ sender: NSMenuItem) {
         guard let order = sender.representedObject as? LastOrder else { return }

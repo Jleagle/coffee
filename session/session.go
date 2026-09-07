@@ -15,9 +15,7 @@ type Session struct {
 	DisplayName  string `json:"display_name"`
 
 	// Written by the macOS menu bar app (macos/). Declared here so Save
-	// doesn't drop them when the CLI rewrites the file on token refresh.
-	ProjectID    string      `json:"project_id,omitempty"`
-	APIKey       string      `json:"api_key,omitempty"`
+	// doesn't drop it when the CLI rewrites the file on token refresh.
 	RecentOrders []LastOrder `json:"recent_orders,omitempty"`
 }
 

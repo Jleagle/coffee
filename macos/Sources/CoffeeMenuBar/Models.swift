@@ -8,6 +8,12 @@ struct AppConfig: Sendable {
     let projectID: String
     let apiKey: String
     var database: String { "projects/\(projectID)/databases/(default)" }
+
+    // Public Firebase web config — the same values ship in every web client, so
+    // it's safe to embed. Used as a fallback so a fresh install (no env vars,
+    // no CLI-written ~/.coffee.json) can still reach the sign-in flow.
+    static let defaultProjectID = "protected-jbi-firebase"
+    static let defaultAPIKey = "AIzaSyBKSStxYeu_ALi1tm6Fjfu4aW9RFu9PNNk"
 }
 
 // Mirrors firebase.OptionCollections in the Go CLI, in display order.
