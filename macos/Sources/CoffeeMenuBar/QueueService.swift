@@ -13,6 +13,7 @@ final class QueueService: @unchecked Sendable {
     private var task: Task<Void, Never>?
     private let lock = NSLock()
     private var pollingEnabled = false
+    private var pollUntil = Date.distantPast
     private var burstUntil = Date.distantPast
     private var lastRefresh = Date.distantPast
 
@@ -28,10 +29,17 @@ final class QueueService: @unchecked Sendable {
         self.client = client
     }
 
-    /// Auto-refresh only runs while the shop is open; manual refreshNow()
-    /// always works.
+    /// Auto-refresh runs while the shop is open, plus 5 minutes after it
+    /// closes (so the tail of the queue gets worked off on screen); manual
+    /// refreshNow() always works.
     func setPolling(_ enabled: Bool) {
         lock.lock()
+        if !enabled && pollingEnabled {
+            // Only on a real open→closed transition — the shop listener
+            // re-delivers "closed" on every reconnect, which must not keep
+            // extending the window.
+            pollUntil = Date().addingTimeInterval(300)
+        }
         pollingEnabled = enabled
         lock.unlock()
     }
@@ -47,7 +55,7 @@ final class QueueService: @unchecked Sendable {
     private var shouldRefreshNow: Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard pollingEnabled else { return false }
+        guard pollingEnabled || Date() < pollUntil else { return false }
         if Date() < burstUntil { return true }
         return Date().timeIntervalSince(lastRefresh) >= 59
     }
