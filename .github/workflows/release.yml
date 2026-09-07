@@ -76,10 +76,18 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "dist/${{ steps.package.outputs.archive }}" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          # Idempotent: if the release already exists (created via the GitHub UI,
+          # or by an earlier run that failed at a later step), attach/refresh the
+          # asset instead of failing. Otherwise create it.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "dist/$ARCHIVE" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "dist/$ARCHIVE" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
 
       - name: Update Homebrew tap
         env:
@@ -130,5 +138,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/coffee.rb
-          git commit -m "coffee ${GITHUB_REF_NAME}"
-          git push origin main
+          # Skip the commit/push when a re-run regenerates an identical cask,
+          # so retrying the workflow doesn't fail on "nothing to commit".
+          if git diff --cached --quiet; then
+            echo "Cask unchanged — nothing to push."
+          else
+            git commit -m "coffee ${GITHUB_REF_NAME}"
+            git push origin main
+          fi
