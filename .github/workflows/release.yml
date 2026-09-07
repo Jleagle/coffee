@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,6 +12,12 @@ jobs:
   release:
     runs-on: macos-15
     steps:
+      - name: Require a v* tag ref
+        if: github.ref_type != 'tag'
+        run: |
+          echo "::error::This workflow must run on a v* tag, not '$GITHUB_REF_NAME'. Re-run it from a tag."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
