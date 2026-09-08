@@ -119,15 +119,22 @@ jobs:
             app "Coffee.app"
             binary "coffee"
 
+            # Quit the running app before an upgrade/uninstall replaces it.
+            uninstall quit: "com.jleagle.coffee"
+
             # The app is ad-hoc signed, not notarized, so Gatekeeper would block
             # the quarantined download on first launch — strip the attribute
-            # from the installed app and the staged CLI binary instead.
+            # from the installed app and the staged CLI binary instead. Then
+            # (re)launch, so an upgrade restarts the app.
             postflight do
               system_command "/usr/bin/xattr",
                              args: ["-dr", "com.apple.quarantine", "#{appdir}/Coffee.app"],
                              must_succeed: false
               system_command "/usr/bin/xattr",
                              args: ["-dr", "com.apple.quarantine", staged_path.to_s],
+                             must_succeed: false
+              system_command "/usr/bin/open",
+                             args: ["-a", "#{appdir}/Coffee.app"],
                              must_succeed: false
             end
           end
