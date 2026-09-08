@@ -1,7 +1,21 @@
 import Foundation
 
+/// An order held back by the "Only Order When Open" setting, waiting for the
+/// shop to open. In-memory only; forgotten on restart.
+struct DeferredOrder: Sendable {
+    let drinkID: String
+    let drinkName: String
+    let options: [SelectedOption]
+    let shots: Int
+}
+
+enum PlaceOutcome: Sendable {
+    case placed(position: Int?, last: LastOrder)
+    case deferredUntilOpen
+}
+
 /// Places orders with the same document shape the Go CLI writes, and records
-/// the order in ~/.coffee.json so it can be reordered later.
+/// the order in the recents so it can be reordered later.
 final class OrderService: @unchecked Sendable {
     private let client: FirestoreClient
     private let session: SessionStore
@@ -11,6 +25,8 @@ final class OrderService: @unchecked Sendable {
     // icon can flash when one completes. In-memory only; forgotten on restart.
     private let pendingLock = NSLock()
     private var pendingOrderIDs: Set<String> = []
+    private var deferredOrders: [DeferredOrder] = []
+    private var shopOpen = false
 
     init(client: FirestoreClient, session: SessionStore, config: AppConfig) {
         self.client = client
@@ -18,9 +34,40 @@ final class OrderService: @unchecked Sendable {
         self.config = config
     }
 
-    /// Returns the queue position (nil if it couldn't be determined) and the
-    /// LastOrder that was saved to ~/.coffee.json.
-    func place(drinkID: String, drinkName: String, options: [SelectedOption], shots: Int) async throws -> (position: Int?, last: LastOrder) {
+    /// Kept up to date by AppDelegate so place() can hold orders back while
+    /// the shop is closed (when the setting asks for that).
+    func setShopOpen(_ open: Bool) {
+        pendingLock.lock()
+        shopOpen = open
+        pendingLock.unlock()
+    }
+
+    /// Hands over (and clears) the orders deferred while the shop was closed.
+    func takeDeferred() -> [DeferredOrder] {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        let orders = deferredOrders
+        deferredOrders = []
+        return orders
+    }
+
+    /// Stashes the order when "Only Order When Open" is on and the shop isn't
+    /// open; returns whether it did.
+    private func deferIfClosed(_ order: DeferredOrder) -> Bool {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        guard Settings.onlyOrderWhenOpen && !shopOpen else { return false }
+        deferredOrders.append(order)
+        return true
+    }
+
+    /// Places the order, or — with "Only Order When Open" enabled while the
+    /// shop isn't open — holds it until AppDelegate flushes it on opening.
+    func place(drinkID: String, drinkName: String, options: [SelectedOption], shots: Int) async throws -> PlaceOutcome {
+        if deferIfClosed(DeferredOrder(drinkID: drinkID, drinkName: drinkName, options: options, shots: shots)) {
+            return .deferredUntilOpen
+        }
+
         let info = await session.info()
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
 
@@ -60,7 +107,7 @@ final class OrderService: @unchecked Sendable {
         )
         await session.saveRecentOrder(last)
 
-        return (position, last)
+        return .placed(position: position, last: last)
     }
 
     private func trackPending(_ name: String) {

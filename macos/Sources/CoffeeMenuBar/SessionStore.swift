@@ -20,47 +20,27 @@ enum SessionError: LocalizedError {
     }
 }
 
-/// Reads and writes ~/.coffee.json — the same file the Go CLI uses.
-/// Unknown keys are preserved on every write.
+/// Persists the session (tokens, identity, recent orders) in the app's
+/// UserDefaults (~/Library/Preferences).
 actor SessionStore {
-    static let fileURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".coffee.json")
+    private let defaults = UserDefaults.standard
 
-    private var dict: [String: Any]
-
-    init() throws {
-        let url = Self.fileURL
-        guard let data = try? Data(contentsOf: url) else {
-            dict = [:] // no file yet — the browser sign-in flow will create it
-            return
-        }
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw SessionError.invalid("Could not parse \(url.path)")
-        }
-        dict = obj
-    }
-
-    /// False until the browser sign-in flow (or the CLI's set-token) has
-    /// written tokens.
+    /// False until the browser sign-in flow has written tokens.
     var hasSession: Bool {
         value("id_token") != nil && value("refresh_token") != nil && value("uid") != nil
     }
 
     /// Writes the session produced by the browser sign-in flow.
     func applyLogin(_ creds: LoginCredentials) {
-        dict["id_token"] = creds.idToken
-        dict["refresh_token"] = creds.refreshToken
-        dict["uid"] = creds.uid
-        dict["email"] = creds.email
-        dict["display_name"] = creds.displayName
-        do {
-            try save()
-        } catch {
-            log("could not save session: \(error.localizedDescription)")
-        }
+        defaults.set(creds.idToken, forKey: "id_token")
+        defaults.set(creds.refreshToken, forKey: "refresh_token")
+        defaults.set(creds.uid, forKey: "uid")
+        defaults.set(creds.email, forKey: "email")
+        defaults.set(creds.displayName, forKey: "display_name")
     }
 
     func value(_ key: String) -> String? {
-        dict[key] as? String
+        defaults.string(forKey: key)
     }
 
     func info() -> SessionInfo {
@@ -71,35 +51,21 @@ actor SessionStore {
         )
     }
 
-    /// The most recent orders, newest first (max 5). Seeds itself from a
-    /// legacy single "last_order" entry when "recent_orders" hasn't been
-    /// written yet.
+    /// The most recent orders, newest first (max 5).
     func recentOrders() -> [LastOrder] {
-        if let arr = dict["recent_orders"] as? [Any] {
-            return Array(arr.compactMap(Self.decodeOrder).prefix(5))
-        }
-        guard let obj = dict["last_order"], let last = Self.decodeOrder(obj) else { return [] }
-        return [last]
+        guard let data = defaults.data(forKey: "recent_orders"),
+              let orders = try? JSONDecoder().decode([LastOrder].self, from: data) else { return [] }
+        return Array(orders.prefix(5))
     }
 
-    /// Puts the order at the front of "recent_orders" (replacing any entry with
+    /// Puts the order at the front of the recents (replacing any entry with
     /// the same drink/shots/options) and keeps at most 5.
     func saveRecentOrder(_ order: LastOrder) {
         var orders = recentOrders().filter { !$0.sameSelection(as: order) }
         orders.insert(order, at: 0)
-        dict["recent_orders"] = orders.prefix(5).compactMap(Self.encodeOrder)
-        dict.removeValue(forKey: "last_order") // legacy key, superseded by recent_orders
-        try? save()
-    }
-
-    private static func decodeOrder(_ obj: Any) -> LastOrder? {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
-        return try? JSONDecoder().decode(LastOrder.self, from: data)
-    }
-
-    private static func encodeOrder(_ order: LastOrder) -> Any? {
-        guard let data = try? JSONEncoder().encode(order) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data)
+        if let data = try? JSONEncoder().encode(Array(orders.prefix(5))) {
+            defaults.set(data, forKey: "recent_orders")
+        }
     }
 
     // MARK: - Tokens
@@ -129,18 +95,11 @@ actor SessionStore {
               let idToken = obj["id_token"] as? String else {
             throw SessionError.refreshFailed("no id_token in response")
         }
-        dict["id_token"] = idToken
+        defaults.set(idToken, forKey: "id_token")
         if let newRefresh = obj["refresh_token"] as? String {
-            dict["refresh_token"] = newRefresh
+            defaults.set(newRefresh, forKey: "refresh_token")
         }
-        try? save()
         return idToken
-    }
-
-    private func save() throws {
-        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: Self.fileURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.fileURL.path)
     }
 
     private static func jwtExpiry(_ token: String) -> Date? {

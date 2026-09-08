@@ -377,17 +377,22 @@ final class OrderWindowController: NSWindowController {
 
         Task { @MainActor in
             do {
-                let (position, last) = try await orderService.place(
+                let outcome = try await orderService.place(
                     drinkID: drink.id,
                     drinkName: drink.name,
                     options: selected,
                     shots: shots
                 )
-                onPlaced?(last)
-                if let position {
-                    statusLabel.stringValue = "✓ Order placed — you're number \(position) in the queue."
-                } else {
-                    statusLabel.stringValue = "✓ Order placed."
+                switch outcome {
+                case .placed(let position, let last):
+                    onPlaced?(last)
+                    if let position {
+                        statusLabel.stringValue = "✓ Order placed — you're number \(position) in the queue."
+                    } else {
+                        statusLabel.stringValue = "✓ Order placed."
+                    }
+                case .deferredUntilOpen:
+                    statusLabel.stringValue = "✓ Order held — it'll be placed when the shop opens."
                 }
                 spinner.stopAnimation(nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in

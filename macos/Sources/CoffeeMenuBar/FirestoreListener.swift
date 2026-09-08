@@ -1,29 +1,37 @@
 import Foundation
 
-/// Realtime listener on the coffeeShop/info document — the same Firestore
-/// `Listen` RPC the Go CLI uses, carried over Google's WebChannel transport
-/// (the transport the Firestore web SDK uses) so we get push updates with no
-/// SDK dependency.
+/// Generic realtime listener speaking Firestore's `Listen` RPC over Google's
+/// WebChannel transport (the transport the Firestore web SDK uses) so we get
+/// push updates with no SDK dependency. Registers a single target — a
+/// document or a query — and surfaces the raw ListenResponse messages.
 ///
 /// Flow: a handshake POST registers the listen target and returns a session ID,
 /// then a long-lived GET (the "backchannel") streams length-prefixed JSON
 /// chunks containing ListenResponse messages. When the server closes the
-/// backchannel we simply re-handshake, which also re-delivers the current
-/// document state, so every reconnect is a free re-sync.
-final class ShopListener: @unchecked Sendable {
+/// backchannel we simply re-handshake, which also re-delivers the target's
+/// current state, so every reconnect is a free re-sync.
+final class FirestoreListener: @unchecked Sendable {
     private let config: AppConfig
     private let session: SessionStore
     private let urlSession: URLSession
     private var task: Task<Void, Never>?
+    // Rebuilt per connect so time-bounded query targets stay fresh.
+    private let makeTarget: @Sendable () -> [String: Any]
 
-    /// Called on the main queue with every shop state observed.
-    var onState: ((ShopState) -> Void)?
+    /// Called (off the main queue) at the start of every (re)connect, before
+    /// the server re-delivers the target's full current state.
+    var onReset: (() -> Void)?
+    /// Called (off the main queue) with each ListenResponse message.
+    var onMessage: (([String: Any]) -> Void)?
+    /// Called (off the main queue) after several consecutive failures.
+    var onDown: (() -> Void)?
 
     private static let channelBase = "https://firestore.googleapis.com/google.firestore.v1.Firestore/Listen/channel"
 
-    init(config: AppConfig, session: SessionStore) {
+    init(config: AppConfig, session: SessionStore, makeTarget: @escaping @Sendable () -> [String: Any]) {
         self.config = config
         self.session = session
+        self.makeTarget = makeTarget
         let cfg = URLSessionConfiguration.ephemeral
         // Applies between reads on the streamed backchannel, so a stalled
         // connection fails over to a reconnect. The server pings well within this.
@@ -39,6 +47,13 @@ final class ShopListener: @unchecked Sendable {
         task?.cancel()
     }
 
+    /// Drops the current stream and reconnects; the fresh handshake re-sends
+    /// the target's full state.
+    func resync() {
+        stop()
+        start()
+    }
+
     private func run() async {
         var failures = 0
         while !Task.isCancelled {
@@ -52,7 +67,7 @@ final class ShopListener: @unchecked Sendable {
             } catch {
                 failures += 1
                 log("listener error (attempt \(failures)): \(error.localizedDescription)")
-                if failures >= 3 { emit(.unknown) }
+                if failures >= 3 { onDown?() }
                 let delay = UInt64(min(failures * 3, 30))
                 try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
             }
@@ -61,6 +76,7 @@ final class ShopListener: @unchecked Sendable {
 
     private func listenOnce() async throws {
         let token = try await session.freshIDToken(apiKey: config.apiKey)
+        onReset?()
         let (sid, gsessionid) = try await handshake(token: token)
         try await consumeBackchannel(token: token, sid: sid, gsessionid: gsessionid)
     }
@@ -70,10 +86,7 @@ final class ShopListener: @unchecked Sendable {
     private func handshake(token: String) async throws -> (sid: String, gsessionid: String) {
         let listenRequest: [String: Any] = [
             "database": config.database,
-            "addTarget": [
-                "documents": ["documents": ["\(config.database)/documents/coffeeShop/info"]],
-                "targetId": 1,
-            ],
+            "addTarget": makeTarget(),
         ]
         let reqJSON = String(data: try JSONSerialization.data(withJSONObject: listenRequest), encoding: .utf8)!
 
@@ -154,18 +167,9 @@ final class ShopListener: @unchecked Sendable {
             }
             for message in payload {
                 guard let msg = message as? [String: Any] else { continue }
-                if let change = msg["documentChange"] as? [String: Any],
-                   let doc = change["document"] as? [String: Any],
-                   let fields = doc["fields"] as? [String: Any],
-                   let open = FS.bool(fields, "open") {
-                    emit(open ? .open : .closed)
-                }
+                onMessage?(msg)
             }
         }
-    }
-
-    private func emit(_ state: ShopState) {
-        DispatchQueue.main.async { [onState] in onState?(state) }
     }
 
     // MARK: - Helpers
@@ -185,6 +189,38 @@ final class ShopListener: @unchecked Sendable {
     private static func randomZX() -> String {
         let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
         return String((0..<12).map { _ in chars.randomElement()! })
+    }
+}
+
+/// Watches the coffeeShop/info document for the open/closed flag.
+final class ShopListener: @unchecked Sendable {
+    private let inner: FirestoreListener
+
+    /// Called on the main queue with every shop state observed.
+    var onState: ((ShopState) -> Void)?
+
+    init(config: AppConfig, session: SessionStore) {
+        inner = FirestoreListener(config: config, session: session) {
+            [
+                "documents": ["documents": ["\(config.database)/documents/coffeeShop/info"]],
+                "targetId": 1,
+            ]
+        }
+        inner.onMessage = { [weak self] msg in
+            guard let change = msg["documentChange"] as? [String: Any],
+                  let doc = change["document"] as? [String: Any],
+                  let fields = doc["fields"] as? [String: Any],
+                  let open = FS.bool(fields, "open") else { return }
+            self?.emit(open ? .open : .closed)
+        }
+        inner.onDown = { [weak self] in self?.emit(.unknown) }
+    }
+
+    func start() { inner.start() }
+    func stop() { inner.stop() }
+
+    private func emit(_ state: ShopState) {
+        DispatchQueue.main.async { [onState] in onState?(state) }
     }
 }
 

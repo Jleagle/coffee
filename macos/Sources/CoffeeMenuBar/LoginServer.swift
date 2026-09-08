@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// Everything needed to write a session into ~/.coffee.json after a browser sign-in.
+/// Everything needed to store a session after a browser sign-in.
 struct LoginCredentials: Sendable {
     let idToken: String
     let refreshToken: String

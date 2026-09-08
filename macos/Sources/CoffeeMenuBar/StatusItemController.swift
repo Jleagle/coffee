@@ -13,7 +13,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var queuing: Int?
     private var ordersToday: Int?
     private var setupError: String?
-    private var lastRefreshError: String?
     private var signInAction: (() -> Void)?
 
     var recentOrders: [LastOrder] = []
@@ -21,7 +20,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var onNewOrder: (() -> Void)?
     var onReorder: ((LastOrder) -> Void)?
-    var onRefresh: (() -> Void)?
 
     override init() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -41,12 +39,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.queuing = queuing
         self.ordersToday = ordersToday
         self.queueOrders = orders
-        lastRefreshError = nil
         render()
-    }
-
-    func setRefreshError(_ message: String) {
-        lastRefreshError = message
     }
 
     func showSetupError(_ message: String) {
@@ -190,17 +183,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(shopLine())
 
-        if let lastRefreshError {
-            let err = disabledItem("Refresh failed")
-            err.toolTip = lastRefreshError
-            menu.addItem(err)
-        }
-
         menu.addItem(.separator())
 
         for (index, order) in recentOrders.enumerated() {
-            // ⌘O always reorders the most recent order; older ones are click-only.
-            let reorder = NSMenuItem(title: "Reorder \(order.summary)", action: #selector(reorderClicked(_:)), keyEquivalent: index == 0 ? "o" : "")
+            // ⌘R always reorders the most recent order; older ones are click-only.
+            let reorder = NSMenuItem(title: "Reorder \(order.summary)", action: #selector(reorderClicked(_:)), keyEquivalent: index == 0 ? "r" : "")
             reorder.target = self
             reorder.toolTip = order.optionsSummary
             reorder.representedObject = order
@@ -215,18 +202,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         newOrder.target = self
         menu.addItem(newOrder)
 
-        let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshClicked), keyEquivalent: "r")
-        refresh.target = self
-        menu.addItem(refresh)
-
+        menu.addItem(settingsItem())
         menu.addItem(quitItem())
 
-        if !queueOrders.isEmpty {
+        if Settings.showQueue && !queueOrders.isEmpty {
             menu.addItem(.separator())
             for (index, order) in queueOrders.enumerated() {
                 menu.addItem(disabledItem("\(index + 1). \(order.userName) — \(order.drinkName)"))
             }
         }
+    }
+
+    private func settingsItem() -> NSMenuItem {
+        let settings = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+
+        let showQueue = NSMenuItem(title: "Show Queue", action: #selector(toggleShowQueue), keyEquivalent: "")
+        showQueue.target = self
+        showQueue.state = Settings.showQueue ? .on : .off
+        showQueue.toolTip = "List the orders currently in the queue at the bottom of this menu"
+        sub.addItem(showQueue)
+
+        let onlyOpen = NSMenuItem(title: "Only Order When Open", action: #selector(toggleOnlyOrderWhenOpen), keyEquivalent: "")
+        onlyOpen.target = self
+        onlyOpen.state = Settings.onlyOrderWhenOpen ? .on : .off
+        onlyOpen.toolTip = "Hold orders placed while the shop is closed and send them when it opens"
+        sub.addItem(onlyOpen)
+
+        settings.submenu = sub
+        return settings
     }
 
     private func shopLine() -> NSMenuItem {
@@ -263,8 +268,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func quitClicked() { NSApp.terminate(nil) }
+    @objc private func toggleShowQueue() { Settings.showQueue.toggle() }
+    @objc private func toggleOnlyOrderWhenOpen() { Settings.onlyOrderWhenOpen.toggle() }
     @objc private func newOrderClicked() { onNewOrder?() }
-    @objc private func refreshClicked() { onRefresh?() }
     @objc private func signInClicked() { signInAction?() }
 
     @objc private func reorderClicked(_ sender: NSMenuItem) {

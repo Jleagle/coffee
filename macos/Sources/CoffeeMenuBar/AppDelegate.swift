@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var client: FirestoreClient?
     private var orderService: OrderService?
     private var listener: ShopListener?
-    private var queue: QueueService?
+    private var orders: OrdersListener?
     private var orderWindow: OrderWindowController?
     private var loginServer: LoginServer?
 
@@ -17,24 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func bootstrap() async {
-        let sessionStore: SessionStore
-        do {
-            sessionStore = try SessionStore()
-        } catch {
-            status.showSetupError(error.localizedDescription)
-            return
-        }
+        let sessionStore = SessionStore()
         session = sessionStore
 
-        // Config comes from the CLI's env vars, falling back to ~/.coffee.json
-        // for launches outside a shell (Finder, brew services).
-        // Config resolution order: env vars (CLI shell) → ~/.coffee.json →
-        // embedded public defaults, so the app self-bootstraps with no CLI.
-        let env = ProcessInfo.processInfo.environment
-        var projectID = env["COFFEE_PROJECT_ID"] ?? ""
-        var apiKey = env["COFFEE_API_KEY"] ?? ""
-        if projectID.isEmpty { projectID = await sessionStore.value("project_id") ?? "" }
-        if apiKey.isEmpty { apiKey = await sessionStore.value("api_key") ?? "" }
+        // Config: stored defaults override the embedded public defaults, so
+        // the app self-bootstraps with no other setup.
+        var projectID = await sessionStore.value("project_id") ?? ""
+        var apiKey = await sessionStore.value("api_key") ?? ""
         if projectID.isEmpty { projectID = AppConfig.defaultProjectID }
         if apiKey.isEmpty { apiKey = AppConfig.defaultAPIKey }
 
@@ -46,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// No tokens in ~/.coffee.json — serve the local sign-in page, open it in
+    /// No stored tokens — serve the local sign-in page, open it in
     /// the browser, and start the services once credentials arrive.
     @MainActor
     private func beginLogin(config: AppConfig, sessionStore: SessionStore) async {
@@ -83,24 +72,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status.recentOrders = await sessionStore.recentOrders()
         status.onNewOrder = { [weak self] in self?.showOrderWindow() }
         status.onReorder = { [weak self] order in self?.reorder(order) }
-        status.onRefresh = { [weak self] in self?.queue?.refreshNow() }
-
-        let queue = QueueService(client: client)
-        queue.onUpdate = { [weak self] queuing, ordersToday, orders in
-            self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: orders)
+        let orders = OrdersListener(config: config, session: sessionStore)
+        orders.onUpdate = { [weak self] queuing, ordersToday, queued in
+            self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: queued)
         }
-        queue.onStatuses = { [weak self] statuses in
+        orders.onStatuses = { [weak self] statuses in
             guard let self, let orderService = self.orderService else { return }
             // Flash the icon when an order this app placed is completed.
             if orderService.notePendingStatuses(statuses) {
                 self.status.startFlashing()
             }
         }
-        queue.onError = { [weak self] message in
-            self?.status.setRefreshError(message)
-        }
-        queue.start()
-        self.queue = queue
+        orders.start()
+        self.orders = orders
 
         let listener = ShopListener(config: config, session: sessionStore)
         listener.onState = { [weak self] state in
@@ -120,15 +104,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let previous = status.shop
         status.setShop(state)
         orderWindow?.shopStateChanged(state)
-        queue?.setPolling(state == .open)
+        orderService?.setShopOpen(state == .open)
         if state == .open && previous != .open {
             if previous == .closed {
                 playOpenSound()
-                // The rush is right after opening: poll fast for the first 5
-                // minutes, then settle back to once a minute.
-                queue?.beginBurst(seconds: 300)
             }
-            queue?.refreshNow()
+            // Re-anchor the orders query at today's midnight in case the app
+            // sat connected across the day boundary.
+            orders?.refreshNow()
+            flushDeferredOrders()
+        }
+    }
+
+    /// Places any orders that "Only Order When Open" held back while the shop
+    /// was closed.
+    @MainActor
+    private func flushDeferredOrders() {
+        guard let orderService else { return }
+        let held = orderService.takeDeferred()
+        guard !held.isEmpty else { return }
+        Task { @MainActor in
+            for order in held {
+                do {
+                    let outcome = try await orderService.place(
+                        drinkID: order.drinkID,
+                        drinkName: order.drinkName,
+                        options: order.options,
+                        shots: order.shots
+                    )
+                    if case .placed(let position, _) = outcome {
+                        reloadRecentOrders()
+                        let suffix = position.map { " You're number \($0) in the queue." } ?? ""
+                        alert(title: "Order placed", text: "\(order.drinkName) ordered now the shop is open.\(suffix)")
+                    }
+                } catch {
+                    alert(title: "Order failed", text: "\(order.drinkName): \(error.localizedDescription)")
+                }
+            }
         }
     }
 
@@ -151,7 +163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let controller = OrderWindowController(client: client, orderService: orderService)
             controller.onPlaced = { [weak self] _ in
                 self?.reloadRecentOrders()
-                self?.queue?.refreshNow()
             }
             orderWindow = controller
         }
@@ -167,16 +178,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let options = order.options.map {
                     SelectedOption(collection: $0.collection, id: $0.id, name: $0.name, count: $0.count ?? 1)
                 }
-                let (position, _) = try await orderService.place(
+                let outcome = try await orderService.place(
                     drinkID: order.drinkID,
                     drinkName: order.drinkName,
                     options: options,
                     shots: order.shots
                 )
-                reloadRecentOrders()
-                queue?.refreshNow()
-                let suffix = position.map { " You're number \($0) in the queue." } ?? ""
-                alert(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
+                switch outcome {
+                case .placed(let position, _):
+                    reloadRecentOrders()
+                    let suffix = position.map { " You're number \($0) in the queue." } ?? ""
+                    alert(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
+                case .deferredUntilOpen:
+                    alert(title: "Order held", text: "\(order.summary) will be ordered when the shop opens.")
+                }
             } catch {
                 alert(title: "Order failed", text: error.localizedDescription)
             }
