@@ -63,13 +63,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let button = item.button else { return }
         button.image = Self.icon(for: shop)
         button.imagePosition = .imageLeft
-        button.title = queuing.map { " \($0)" } ?? ""
+        // Your position while queued and/or the queue size, depending on the
+        // settings: "4/8" when both show, "4th" for a position on its own,
+        // "8" for the size on its own.
+        let position = queueOrders.firstIndex(where: { $0.isMine }).map { $0 + 1 }
+        let size = Settings.showQueueSize ? queuing : nil
+        switch (position, size) {
+        case let (position?, size?): button.title = " \(position)/\(size)"
+        case let (position?, nil): button.title = " " + Self.ordinal(position)
+        case let (nil, size?): button.title = " \(size)"
+        case (nil, nil): button.title = ""
+        }
         switch shop {
         case .open: button.toolTip = "Coffee shop is open"
         case .closed: button.toolTip = "Coffee shop is closed"
         case .unknown:
             button.toolTip = setupError ?? (signInAction != nil ? "Sign in to Coffee" : "Coffee shop status unknown")
         }
+    }
+
+    private static let ordinalFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .ordinal
+        return formatter
+    }()
+
+    private static func ordinal(_ n: Int) -> String {
+        ordinalFormatter.string(from: NSNumber(value: n)) ?? String(n)
     }
 
     private static func icon(for state: ShopState) -> NSImage {
@@ -208,7 +228,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if Settings.showQueue && !queueOrders.isEmpty {
             menu.addItem(.separator())
             for (index, order) in queueOrders.enumerated() {
-                menu.addItem(disabledItem("\(index + 1). \(order.userName) — \(order.drinkName)"))
+                let marker = order.isMine ? "*" : ""
+                menu.addItem(disabledItem("\(index + 1). \(marker)\(order.userName) — \(order.drinkName)"))
             }
         }
     }
@@ -223,6 +244,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         showQueue.state = Settings.showQueue ? .on : .off
         showQueue.toolTip = "List the orders currently in the queue at the bottom of this menu"
         sub.addItem(showQueue)
+
+        let showSize = NSMenuItem(title: "Show Queue Size in Toolbar", action: #selector(toggleShowQueueSize), keyEquivalent: "")
+        showSize.target = self
+        showSize.state = Settings.showQueueSize ? .on : .off
+        showSize.toolTip = "Show how many people are queuing next to the menu bar icon"
+        sub.addItem(showSize)
 
         let onlyOpen = NSMenuItem(title: "Only Order When Open", action: #selector(toggleOnlyOrderWhenOpen), keyEquivalent: "")
         onlyOpen.target = self
@@ -270,6 +297,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func quitClicked() { NSApp.terminate(nil) }
     @objc private func toggleShowQueue() { Settings.showQueue.toggle() }
     @objc private func toggleOnlyOrderWhenOpen() { Settings.onlyOrderWhenOpen.toggle() }
+
+    @objc private func toggleShowQueueSize() {
+        Settings.showQueueSize.toggle()
+        render() // the toolbar title changes immediately
+    }
     @objc private func newOrderClicked() { onNewOrder?() }
     @objc private func signInClicked() { signInAction?() }
 

@@ -9,6 +9,12 @@ enum Settings {
         set { UserDefaults.standard.set(newValue, forKey: "showQueue") }
     }
 
+    /// Show the queue size next to the menu bar icon.
+    static var showQueueSize: Bool {
+        get { UserDefaults.standard.object(forKey: "showQueueSize") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "showQueueSize") }
+    }
+
     /// Hold orders placed while the shop is closed and send them automatically
     /// as soon as it opens.
     static var onlyOrderWhenOpen: Bool {

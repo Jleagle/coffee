@@ -4,6 +4,8 @@ import Foundation
 struct QueuedOrder: Sendable {
     let userName: String
     let drinkName: String
+    /// Whether the signed-in user placed this order.
+    let isMine: Bool
 }
 
 /// Live view of today's orders via a Firestore query listen — no polling.
@@ -16,9 +18,11 @@ final class OrdersListener: @unchecked Sendable {
         let status: String
         let userName: String
         let drinkName: String
+        let userID: String
     }
 
     private let inner: FirestoreListener
+    private let uid: String
     private let lock = NSLock()
     private var orders: [String: OrderDoc] = [:]
 
@@ -29,7 +33,8 @@ final class OrdersListener: @unchecked Sendable {
     /// so completions of orders this app placed can be noticed.
     var onStatuses: (([String: String]) -> Void)?
 
-    init(config: AppConfig, session: SessionStore) {
+    init(config: AppConfig, session: SessionStore, uid: String) {
+        self.uid = uid
         inner = FirestoreListener(config: config, session: session) {
             [
                 "query": [
@@ -79,7 +84,8 @@ final class OrdersListener: @unchecked Sendable {
                 timestamp: FS.int(fields, "orderTimestamp") ?? 0,
                 status: FS.string(fields, "status") ?? "",
                 userName: FS.string(fields, "userName") ?? "?",
-                drinkName: FS.string(fields, "drinkName") ?? "?"
+                drinkName: FS.string(fields, "drinkName") ?? "?",
+                userID: FS.string(fields, "userId") ?? ""
             )
             lock.unlock()
             emit()
@@ -113,7 +119,7 @@ final class OrdersListener: @unchecked Sendable {
         let queued = today.values
             .filter { $0.status == "queuing" || $0.status == "being-prepared" }
             .sorted { $0.timestamp < $1.timestamp }
-            .map { QueuedOrder(userName: $0.userName, drinkName: $0.drinkName) }
+            .map { QueuedOrder(userName: $0.userName, drinkName: $0.drinkName, isMine: !uid.isEmpty && $0.userID == uid) }
         let statuses = today.mapValues { $0.status }
 
         DispatchQueue.main.async { [onUpdate, onStatuses] in
