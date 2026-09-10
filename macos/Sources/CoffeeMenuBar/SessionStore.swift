@@ -58,6 +58,14 @@ actor SessionStore {
         return Array(orders.prefix(5))
     }
 
+    /// Drops the order from the recents.
+    func forgetRecentOrder(_ order: LastOrder) {
+        let orders = recentOrders().filter { !$0.sameSelection(as: order) }
+        if let data = try? JSONEncoder().encode(orders) {
+            defaults.set(data, forKey: "recent_orders")
+        }
+    }
+
     /// Puts the order at the front of the recents (replacing any entry with
     /// the same drink/shots/options) and keeps at most 5.
     func saveRecentOrder(_ order: LastOrder) {

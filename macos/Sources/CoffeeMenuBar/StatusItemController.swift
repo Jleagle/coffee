@@ -20,6 +20,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var onNewOrder: (() -> Void)?
     var onReorder: ((LastOrder) -> Void)?
+    var onForget: ((LastOrder) -> Void)?
 
     override init() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -212,6 +213,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             reorder.toolTip = order.optionsSummary
             reorder.representedObject = order
             menu.addItem(reorder)
+
+            // Holding ⌥ swaps the row for a "Forget" that drops it from the
+            // recents.
+            let forget = NSMenuItem(title: "Forget \(order.summary)", action: #selector(forgetClicked(_:)), keyEquivalent: index == 0 ? "r" : "")
+            forget.target = self
+            forget.toolTip = order.optionsSummary
+            forget.representedObject = order
+            forget.isAlternate = true
+            forget.keyEquivalentModifierMask = index == 0 ? [.command, .option] : [.option]
+            menu.addItem(forget)
         }
 
         if !recentOrders.isEmpty {
@@ -308,5 +319,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func reorderClicked(_ sender: NSMenuItem) {
         guard let order = sender.representedObject as? LastOrder else { return }
         onReorder?(order)
+    }
+
+    @objc private func forgetClicked(_ sender: NSMenuItem) {
+        guard let order = sender.representedObject as? LastOrder else { return }
+        onForget?(order)
     }
 }

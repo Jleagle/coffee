@@ -72,6 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status.recentOrders = await sessionStore.recentOrders()
         status.onNewOrder = { [weak self] in self?.showOrderWindow() }
         status.onReorder = { [weak self] order in self?.reorder(order) }
+        status.onForget = { [weak self] order in
+            guard let self, let session = self.session else { return }
+            Task { @MainActor in
+                await session.forgetRecentOrder(order)
+                self.status.recentOrders = await session.recentOrders()
+            }
+        }
         let orders = OrdersListener(config: config, session: sessionStore, uid: await sessionStore.info().uid)
         orders.onUpdate = { [weak self] queuing, ordersToday, queued in
             self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: queued)
