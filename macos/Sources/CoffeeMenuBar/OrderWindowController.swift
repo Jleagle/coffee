@@ -296,7 +296,12 @@ final class OrderWindowController: NSWindowController {
             let items = catalog.options[coll] ?? []
             let applicable = drink.optionGroups.contains(coll) && !items.isEmpty
             grid.row(at: row).isHidden = !applicable
-            guard applicable else { continue }
+            guard applicable else {
+                // Clear the hidden popup so a value set for a previous drink
+                // can't ride along into the order.
+                popup.removeAllItems()
+                continue
+            }
 
             let required = drink.requiredOptions.contains(coll)
             optionLabels[coll]?.stringValue = required ? "\(title) *" : title
@@ -360,6 +365,10 @@ final class OrderWindowController: NSWindowController {
     @objc private func placeClicked() {
         guard let drink = selectedDrink, !placing else { return }
 
+        // A hidden shots row means the drink takes no shots — don't submit a
+        // value left over from a previously selected drink.
+        let shots = grid.row(at: shotsRowIndex).isHidden ? 1 : self.shots
+
         var selected: [SelectedOption] = []
         for (coll, _) in optionCollections {
             guard let row = optionRowIndex[coll], !grid.row(at: row).isHidden,
@@ -373,7 +382,6 @@ final class OrderWindowController: NSWindowController {
         orderButton.isEnabled = false
         spinner.startAnimation(nil)
         statusLabel.stringValue = "Placing order…"
-        let shots = self.shots
 
         Task { @MainActor in
             do {
