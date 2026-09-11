@@ -1,0 +1,57 @@
+version: 2
+
+builds:
+  - env:
+      - "CGO_ENABLED=0"
+    goos:
+      - "darwin"
+    goarch:
+      - "amd64"
+      - "arm64"
+
+universal_binaries:
+  # One fat binary → one darwin_all archive → one cask URL, same as the old
+  # manual lipo step.
+  - replace: true
+
+archives:
+  - formats: ["tar.gz"]
+    files:
+      # Pre-built by the release workflow (swift build + Info.plist + ad-hoc
+      # codesign) before GoReleaser runs.
+      - "Coffee.app/**"
+
+homebrew_casks:
+  - name: "coffee"
+    description: "Coffee shop CLI and macOS menu bar app"
+    homepage: "https://github.com/Jleagle/coffee"
+    # GoReleaser only emits `binary` artifacts itself, so the menu bar app's
+    # stanzas ride in via custom_block. postflight_steps replaces the
+    # deprecated postflight block (same approach as gitstatus).
+    custom_block: |
+      app "Coffee.app"
+
+      # Quit the running app before an upgrade/uninstall replaces it.
+      uninstall quit: "com.jleagle.coffee"
+
+      postflight_steps do
+        on_macos do
+          # Ad-hoc signed, not notarized — strip the quarantine flag or
+          # Gatekeeper blocks the first launch. The `binary` symlink target
+          # lives in the staged dir (chdir "."); the app has been moved to
+          # the applications dir by this point.
+          # ({{ "{{appdir}}" }} is a Homebrew runner token, escaped here so
+          # GoReleaser's own templating passes it through verbatim.)
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "coffee"], chdir: ".", must_succeed: false
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{appdir}}" }}/Coffee.app"], must_succeed: false
+          # (Re)launch, so an upgrade restarts the app.
+          run "/usr/bin/open", args: ["-a", "{{ "{{appdir}}" }}/Coffee.app"], must_succeed: false
+        end
+      end
+    repository:
+      owner: "Jleagle"
+      name: "homebrew-coffee"
+      token: "{{ .Env.HOMEBREW_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: false
+        draft: false
