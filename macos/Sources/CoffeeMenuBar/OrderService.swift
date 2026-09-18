@@ -137,6 +137,22 @@ final class OrderService: @unchecked Sendable {
         return anyCompleted
     }
 
+    /// The fields the web app's Cancel button writes.
+    static func cancelledFields(nowMs: Int64) -> [String: Any] {
+        [
+            "status": FS.s("cancelled"),
+            "lastUpdatedTimestamp": FS.i(nowMs),
+        ]
+    }
+
+    /// Cancels one of the signed-in user's orders (placed from any client) by
+    /// flipping its status, the same write the web app does. The orders
+    /// listener notices the change and drops it from the queue.
+    func cancel(orderID: String) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        try await client.patchDocument(collection: "order", id: orderID, fields: Self.cancelledFields(nowMs: nowMs))
+    }
+
     private func queuePosition(at orderMs: Int64) async throws -> Int {
         let startOfDay = orderMs - orderMs % 86_400_000
         let docs = try await client.runQuery([

@@ -79,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.status.recentOrders = await session.recentOrders()
             }
         }
+        status.onCancel = { [weak self] order in self?.cancel(order) }
         let orders = OrdersListener(config: config, session: sessionStore, uid: await sessionStore.info().uid)
         orders.onUpdate = { [weak self] queuing, ordersToday, queued in
             self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: queued)
@@ -201,6 +202,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } catch {
                 alert(title: "Order failed", text: error.localizedDescription)
+            }
+        }
+    }
+
+    /// Cancels one of the user's queued orders. The orders listener sees the
+    /// status change and removes it from the menu and the icon's position.
+    @MainActor
+    private func cancel(_ order: QueuedOrder) {
+        guard let orderService else { return }
+        Task { @MainActor in
+            do {
+                try await orderService.cancel(orderID: order.id)
+                alert(title: "Order cancelled", text: "\(order.drinkName) has been cancelled.")
+            } catch {
+                alert(title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
             }
         }
     }

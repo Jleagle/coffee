@@ -12,5 +12,6 @@ let package = Package(
     ],
     targets: [
         .executableTarget(name: "CoffeeMenuBar", path: "Sources/CoffeeMenuBar"),
+        .testTarget(name: "CoffeeMenuBarTests", dependencies: ["CoffeeMenuBar"], path: "Tests/CoffeeMenuBarTests"),
     ]
 )

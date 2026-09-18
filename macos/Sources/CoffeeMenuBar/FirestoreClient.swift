@@ -92,6 +92,21 @@ final class FirestoreClient: @unchecked Sendable {
         }
         return name
     }
+
+    /// The URL for a partial update. The mask limits the write to the named
+    /// fields (without it Firestore replaces the whole document) and the
+    /// precondition refuses to recreate a document that has since been
+    /// deleted.
+    static func patchURL(documentsBase: String, collection: String, id: String, updating fieldPaths: [String]) -> String {
+        let params = fieldPaths.map { "updateMask.fieldPaths=\($0)" } + ["currentDocument.exists=true"]
+        return "\(documentsBase)/\(collection)/\(id)?" + params.joined(separator: "&")
+    }
+
+    /// Updates just the given fields of an existing document.
+    func patchDocument(collection: String, id: String, fields: [String: Any]) async throws {
+        let url = Self.patchURL(documentsBase: documentsBase, collection: collection, id: id, updating: fields.keys.sorted())
+        _ = try await send(method: "PATCH", url: url, body: ["fields": fields])
+    }
 }
 
 /// Helpers for Firestore's REST value encoding ({"stringValue": ...} etc).

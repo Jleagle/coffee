@@ -21,6 +21,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var onNewOrder: (() -> Void)?
     var onReorder: ((LastOrder) -> Void)?
     var onForget: ((LastOrder) -> Void)?
+    var onCancel: ((QueuedOrder) -> Void)?
 
     override init() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -206,6 +207,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        // Your orders still waiting in the queue, each with a Cancel. No
+        // shortcut, so it can't be hit by accident.
+        let cancellable = queueOrders.filter(\.isCancellable)
+        for order in cancellable {
+            let cancel = NSMenuItem(title: "Cancel \(order.drinkName)", action: #selector(cancelClicked(_:)), keyEquivalent: "")
+            cancel.target = self
+            cancel.representedObject = order
+            menu.addItem(cancel)
+        }
+
+        if !cancellable.isEmpty {
+            menu.addItem(.separator())
+        }
+
         for (index, order) in recentOrders.enumerated() {
             // ⌘R always reorders the most recent order; older ones are click-only.
             let reorder = NSMenuItem(title: "Reorder \(order.summary)", action: #selector(reorderClicked(_:)), keyEquivalent: index == 0 ? "r" : "")
@@ -324,5 +339,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func forgetClicked(_ sender: NSMenuItem) {
         guard let order = sender.representedObject as? LastOrder else { return }
         onForget?(order)
+    }
+
+    @objc private func cancelClicked(_ sender: NSMenuItem) {
+        guard let order = sender.representedObject as? QueuedOrder else { return }
+        onCancel?(order)
     }
 }

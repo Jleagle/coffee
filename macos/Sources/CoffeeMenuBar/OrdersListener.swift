@@ -1,11 +1,20 @@
 import Foundation
 
-/// One order currently in the queue, for the dropdown's optional queue section.
+/// One order currently in the queue, for the dropdown's cancel section and
+/// optional queue section.
 struct QueuedOrder: Sendable {
+    /// The Firestore document ID, needed to cancel the order.
+    let id: String
     let userName: String
     let drinkName: String
+    /// "queuing" or "being-prepared".
+    let status: String
     /// Whether the signed-in user placed this order.
     let isMine: Bool
+
+    /// You can cancel your own order only while it is still queuing — once
+    /// the barista has started on it, it's yours. Matches the web app.
+    var isCancellable: Bool { isMine && status == "queuing" }
 }
 
 /// Live view of today's orders via a Firestore query listen — no polling.
@@ -116,10 +125,18 @@ final class OrdersListener: @unchecked Sendable {
         lock.unlock()
 
         let total = today.values.filter { $0.status != "cancelled" }.count
-        let queued = today.values
-            .filter { $0.status == "queuing" || $0.status == "being-prepared" }
-            .sorted { $0.timestamp < $1.timestamp }
-            .map { QueuedOrder(userName: $0.userName, drinkName: $0.drinkName, isMine: !uid.isEmpty && $0.userID == uid) }
+        let queued = today
+            .filter { $0.value.status == "queuing" || $0.value.status == "being-prepared" }
+            .sorted { $0.value.timestamp < $1.value.timestamp }
+            .map { id, doc in
+                QueuedOrder(
+                    id: id,
+                    userName: doc.userName,
+                    drinkName: doc.drinkName,
+                    status: doc.status,
+                    isMine: !uid.isEmpty && doc.userID == uid
+                )
+            }
         let statuses = today.mapValues { $0.status }
 
         DispatchQueue.main.async { [onUpdate, onStatuses] in
