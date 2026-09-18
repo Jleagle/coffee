@@ -88,9 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         orders.onStatuses = { [weak self] statuses in
             guard let self, let orderService = self.orderService else { return }
-            // Flash the icon when an order this app placed is completed.
-            if orderService.notePendingStatuses(statuses) {
+            // Flash the icon and put up an alert when an order this app
+            // placed is completed.
+            let ready = orderService.notePendingStatuses(statuses)
+            if !ready.isEmpty {
                 self.status.startFlashing()
+                self.alert(title: "Order ready", text: Self.readyText(ready))
             }
         }
         orders.start()
@@ -244,6 +247,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             status.recentOrders = await session.recentOrders()
         }
+    }
+
+    /// "Your Latte is ready." / "Your Latte and Flat White are ready."
+    static func readyText(_ drinks: [String]) -> String {
+        guard let last = drinks.last else { return "Your order is ready." }
+        if drinks.count == 1 {
+            return "Your \(last) is ready."
+        }
+        let list = drinks.dropLast().joined(separator: ", ") + " and " + last
+        return "Your \(list) are ready."
     }
 
     @MainActor

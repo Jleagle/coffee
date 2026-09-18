@@ -160,7 +160,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// that an order they placed has been completed.
     func startFlashing() {
         guard flashTimer == nil else { return } // already flashing; don't stack timers
-        flashTimer = Timer.scheduledTimer(timeInterval: 0.5, target: self, selector: #selector(flashTick), userInfo: nil, repeats: true)
+        let timer = Timer.scheduledTimer(timeInterval: 0.5, target: self, selector: #selector(flashTick), userInfo: nil, repeats: true)
+        // Keep flashing behind the "Order ready" alert: scheduledTimer only
+        // fires in the default mode, which runModal() leaves.
+        RunLoop.main.add(timer, forMode: .modalPanel)
+        flashTimer = timer
         flashTick()
     }
 

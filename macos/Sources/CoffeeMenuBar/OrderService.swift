@@ -23,10 +23,11 @@ final class OrderService: @unchecked Sendable {
     private let session: SessionStore
     private let config: AppConfig
 
-    // Doc IDs of orders placed by this app that haven't finished yet, so the
-    // icon can flash when one completes. In-memory only; forgotten on restart.
+    // Orders placed by this app that haven't finished yet (doc ID → drink
+    // name), so the app can flash the icon and put up an alert when one is
+    // ready. In-memory only; forgotten on restart.
     private let pendingLock = NSLock()
-    private var pendingOrderIDs: Set<String> = []
+    private var pendingOrders: [String: String] = [:]
     private var deferredOrders: [DeferredOrder] = []
     private var shopOpen = false
 
@@ -117,7 +118,7 @@ final class OrderService: @unchecked Sendable {
         ]
 
         let name = try await client.createDocument(collection: "order", fields: fields)
-        trackPending(name)
+        trackPending(name, drinkName: drinkName)
 
         let position = try? await queuePosition(at: nowMs)
 
@@ -133,31 +134,34 @@ final class OrderService: @unchecked Sendable {
         return .placed(position: position, last: last)
     }
 
-    private func trackPending(_ name: String) {
+    /// Remembers an order this app placed (by its full document name) so
+    /// notePendingStatuses can report when it's ready.
+    func trackPending(_ name: String, drinkName: String) {
         pendingLock.lock()
-        pendingOrderIDs.insert(FS.lastPathComponent(name))
+        pendingOrders[FS.lastPathComponent(name)] = drinkName
         pendingLock.unlock()
     }
 
-    /// Checks the queue poll's doc ID → status map against the orders this app
-    /// placed. Returns true if any of them just completed; a cancelled order
-    /// stops being tracked without triggering anything.
-    func notePendingStatuses(_ statuses: [String: String]) -> Bool {
+    /// Checks the orders listener's doc ID → status map against the orders
+    /// this app placed. Returns the drink names of any that just completed,
+    /// each reported once; a cancelled order stops being tracked without
+    /// triggering anything.
+    func notePendingStatuses(_ statuses: [String: String]) -> [String] {
         pendingLock.lock()
         defer { pendingLock.unlock() }
-        var anyCompleted = false
-        for id in pendingOrderIDs {
+        var ready: [String] = []
+        for (id, drinkName) in pendingOrders {
             switch statuses[id] {
             case "completed":
-                pendingOrderIDs.remove(id)
-                anyCompleted = true
+                pendingOrders[id] = nil
+                ready.append(drinkName)
             case "cancelled":
-                pendingOrderIDs.remove(id)
+                pendingOrders[id] = nil
             default:
                 break
             }
         }
-        return anyCompleted
+        return ready
     }
 
     /// The fields the web app's Cancel button writes.
