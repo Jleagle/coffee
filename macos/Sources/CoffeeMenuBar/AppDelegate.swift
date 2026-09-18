@@ -80,6 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         status.onCancel = { [weak self] order in self?.cancel(order) }
+        status.heldOrders = { [weak self] in self?.orderService?.heldOrders() ?? [] }
+        status.onCancelDeferred = { [weak self] order in self?.cancelDeferred(order) }
         let orders = OrdersListener(config: config, session: sessionStore, uid: await sessionStore.info().uid)
         orders.onUpdate = { [weak self] queuing, ordersToday, queued in
             self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: queued)
@@ -198,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let suffix = position.map { " You're number \($0) in the queue." } ?? ""
                     alert(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
                 case .deferredUntilOpen:
-                    alert(title: "Order held", text: "\(order.summary) will be ordered when the shop opens.")
+                    alert(title: "Order held", text: "\(order.summary) will be ordered when the shop opens. You can cancel it from the menu until then.")
                 }
             } catch {
                 alert(title: "Order failed", text: error.localizedDescription)
@@ -218,6 +220,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 alert(title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Drops an order that "Only Order When Open" was holding back. If the
+    /// shop opened in the meantime the flush has already placed it, and the
+    /// usual queue Cancel takes over once the listener sees the document.
+    @MainActor
+    private func cancelDeferred(_ order: DeferredOrder) {
+        guard let orderService else { return }
+        if orderService.removeDeferred(id: order.id) {
+            alert(title: "Order cancelled", text: "\(order.drinkName) will not be ordered.")
+        } else {
+            alert(title: "Already ordered", text: "\(order.drinkName) was sent when the shop opened. You can still cancel it from the menu while it's queuing.")
         }
     }
 

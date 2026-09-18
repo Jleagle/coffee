@@ -400,7 +400,7 @@ final class OrderWindowController: NSWindowController {
                         statusLabel.stringValue = "✓ Order placed."
                     }
                 case .deferredUntilOpen:
-                    statusLabel.stringValue = "✓ Order held — it'll be placed when the shop opens."
+                    statusLabel.stringValue = "✓ Order held — it'll be placed when the shop opens. You can cancel it from the menu bar until then."
                 }
                 spinner.stopAnimation(nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in

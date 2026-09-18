@@ -3,6 +3,8 @@ import Foundation
 /// An order held back by the "Only Order When Open" setting, waiting for the
 /// shop to open. In-memory only; forgotten on restart.
 struct DeferredOrder: Sendable {
+    /// Identifies the held order so the menu's Cancel item can drop it.
+    let id = UUID().uuidString
     let drinkID: String
     let drinkName: String
     let options: [SelectedOption]
@@ -49,6 +51,27 @@ final class OrderService: @unchecked Sendable {
         let orders = deferredOrders
         deferredOrders = []
         return orders
+    }
+
+    /// The orders currently held back, oldest first, for the menu's Cancel
+    /// items.
+    func heldOrders() -> [DeferredOrder] {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return deferredOrders
+    }
+
+    /// Drops a held order so it is never placed. Nothing has been written to
+    /// Firestore, so there is nothing else to undo. Returns false if the
+    /// order was no longer held — the shop opened and the flush already took
+    /// it — in which case nothing changed.
+    @discardableResult
+    func removeDeferred(id: String) -> Bool {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        let before = deferredOrders.count
+        deferredOrders.removeAll { $0.id == id }
+        return deferredOrders.count != before
     }
 
     /// Stashes the order when "Only Order When Open" is on and the shop isn't

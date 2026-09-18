@@ -22,6 +22,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var onReorder: ((LastOrder) -> Void)?
     var onForget: ((LastOrder) -> Void)?
     var onCancel: ((QueuedOrder) -> Void)?
+    /// The orders "Only Order When Open" is holding back. Read fresh each
+    /// time the menu opens, so there is no copy to keep in sync.
+    var heldOrders: () -> [DeferredOrder] = { [] }
+    var onCancelDeferred: ((DeferredOrder) -> Void)?
 
     override init() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -217,7 +221,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(cancel)
         }
 
-        if !cancellable.isEmpty {
+        // Orders held back until the shop opens. Cancelling one just drops
+        // it — nothing has been written yet.
+        let held = heldOrders()
+        for order in held {
+            let cancel = NSMenuItem(title: "Cancel \(order.drinkName) (held until open)", action: #selector(cancelDeferredClicked(_:)), keyEquivalent: "")
+            cancel.target = self
+            cancel.representedObject = order
+            menu.addItem(cancel)
+        }
+
+        if !cancellable.isEmpty || !held.isEmpty {
             menu.addItem(.separator())
         }
 
@@ -344,5 +358,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func cancelClicked(_ sender: NSMenuItem) {
         guard let order = sender.representedObject as? QueuedOrder else { return }
         onCancel?(order)
+    }
+
+    @objc private func cancelDeferredClicked(_ sender: NSMenuItem) {
+        guard let order = sender.representedObject as? DeferredOrder else { return }
+        onCancelDeferred?(order)
     }
 }
