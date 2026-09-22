@@ -272,8 +272,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if Settings.showQueue && !queueOrders.isEmpty {
             menu.addItem(.separator())
             for (index, order) in queueOrders.enumerated() {
-                let marker = order.isMine ? "*" : ""
-                menu.addItem(disabledItem("\(index + 1). \(marker)\(order.userName) — \(order.drinkName)"))
+                let item = disabledItem("\(index + 1). \(order.userName) — \(order.drinkName)")
+                if order.isMine {
+                    // Bold the whole row so your own order stands out in the queue.
+                    let bold = NSFontManager.shared.convert(NSFont.menuFont(ofSize: 0), toHaveTrait: .boldFontMask)
+                    item.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: bold])
+                }
+                menu.addItem(item)
             }
         }
     }
