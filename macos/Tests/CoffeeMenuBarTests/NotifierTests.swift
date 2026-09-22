@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UserNotifications
 @testable import CoffeeMenuBar
@@ -7,10 +8,26 @@ import UserNotifications
 /// modal dialogs.
 @Suite struct NotifierTests {
     @Test func contentCarriesTitleBodyAndSound() {
-        let content = Notifier.content(title: "Order ready", body: "Your Latte is ready.")
+        let content = Notifier.content(title: "Order ready", body: "Your Latte is ready.", sound: true)
         #expect(content.title == "Order ready")
         #expect(content.body == "Your Latte is ready.")
         #expect(content.sound == .default)
+    }
+
+    @Test func contentCanBeSilent() {
+        let content = Notifier.content(title: "Shop open", body: "The coffee shop is now open.", sound: false)
+        #expect(content.sound == nil)
+    }
+
+    @Test func requestsFollowThePlaySoundsSetting() {
+        let saved = UserDefaults.standard.object(forKey: "playSounds")
+        defer { UserDefaults.standard.set(saved, forKey: "playSounds") }
+
+        Settings.playSounds = false
+        #expect(Notifier.request(title: "Order ready", body: "Your Latte is ready.").content.sound == nil)
+
+        Settings.playSounds = true
+        #expect(Notifier.request(title: "Order ready", body: "Your Latte is ready.").content.sound == .default)
     }
 
     @Test func requestsGetUniqueIdentifiers() {

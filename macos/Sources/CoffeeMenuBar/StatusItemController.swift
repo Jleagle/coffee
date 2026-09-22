@@ -303,6 +303,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         onlyOpen.toolTip = "Hold orders placed while the shop is closed and send them when it opens"
         sub.addItem(onlyOpen)
 
+        let playSounds = NSMenuItem(title: "Play Sounds", action: #selector(togglePlaySounds), keyEquivalent: "")
+        playSounds.target = self
+        playSounds.state = Settings.playSounds ? .on : .off
+        playSounds.toolTip = "Play a sound with every notification and when the shop opens"
+        sub.addItem(playSounds)
+
         settings.submenu = sub
         return settings
     }
@@ -343,6 +349,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func quitClicked() { NSApp.terminate(nil) }
     @objc private func toggleShowQueue() { Settings.showQueue.toggle() }
     @objc private func toggleOnlyOrderWhenOpen() { Settings.onlyOrderWhenOpen.toggle() }
+    @objc private func togglePlaySounds() { Settings.playSounds.toggle() }
 
     @objc private func toggleShowQueueSize() {
         Settings.showQueueSize.toggle()

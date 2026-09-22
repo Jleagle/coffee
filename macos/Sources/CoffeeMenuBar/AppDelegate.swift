@@ -120,6 +120,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status.setShop(state)
         orderWindow?.shopStateChanged(state)
         orderService?.setShopOpen(state == .open)
+        if let message = Self.shopNotification(from: previous, to: state) {
+            notify(title: message.title, text: message.body)
+        }
         if state == .open && previous != .open {
             if previous == .closed {
                 playOpenSound()
@@ -160,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func playOpenSound() {
+        guard Settings.playSounds else { return }
         // Same fanfare as the CLI's WaitForShopOpen.
         if let sound = NSSound(named: "Funk") {
             sound.play()
@@ -248,6 +252,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let session else { return }
         Task { @MainActor in
             status.recentOrders = await session.recentOrders()
+        }
+    }
+
+    /// The notification for a shop state change. Only a real opening or
+    /// closing counts: startup and listener reconnects pass through .unknown
+    /// and re-deliver the current state, and neither is news.
+    static func shopNotification(from previous: ShopState, to state: ShopState) -> (title: String, body: String)? {
+        switch (previous, state) {
+        case (.closed, .open):
+            return ("Shop open", "The coffee shop is now open.")
+        case (.open, .closed):
+            return ("Shop closed", "The coffee shop is now closed.")
+        default:
+            return nil
         }
     }
 

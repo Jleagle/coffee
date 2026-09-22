@@ -67,18 +67,23 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    static func content(title: String, body: String) -> UNMutableNotificationContent {
+    static func content(title: String, body: String, sound: Bool) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
+        content.sound = sound ? .default : nil
         return content
     }
 
     /// A unique identifier per event: reusing one would replace the previous
-    /// notification in Notification Center instead of adding to it.
+    /// notification in Notification Center instead of adding to it. The sound
+    /// follows the Play Sounds setting at the moment of posting.
     static func request(title: String, body: String) -> UNNotificationRequest {
-        UNNotificationRequest(identifier: UUID().uuidString, content: content(title: title, body: body), trigger: nil)
+        UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content(title: title, body: body, sound: Settings.playSounds),
+            trigger: nil
+        )
     }
 
     // MARK: - UNUserNotificationCenterDelegate

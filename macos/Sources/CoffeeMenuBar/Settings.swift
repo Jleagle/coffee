@@ -1,7 +1,7 @@
 import Foundation
 
 /// App-local preferences behind the Settings submenu, persisted in
-/// UserDefaults. All default to on until toggled.
+/// UserDefaults.
 enum Settings {
     /// Show the queue entries at the bottom of the dropdown.
     static var showQueue: Bool {
@@ -20,5 +20,12 @@ enum Settings {
     static var onlyOrderWhenOpen: Bool {
         get { UserDefaults.standard.object(forKey: "onlyOrderWhenOpen") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "onlyOrderWhenOpen") }
+    }
+
+    /// Play a sound with every notification and the shop-open fanfare. Off by
+    /// default.
+    static var playSounds: Bool {
+        get { UserDefaults.standard.object(forKey: "playSounds") as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: "playSounds") }
     }
 }
