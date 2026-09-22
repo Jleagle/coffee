@@ -19,8 +19,7 @@ struct QueuedOrder: Sendable {
 
 /// Live view of today's orders via a Firestore query listen — no polling.
 /// Maintains a local mirror of the result set (rebuilt free of charge on
-/// every reconnect) and reports the queue whenever anything changes, using
-/// the same counting rules as the CLI's `queue` command.
+/// every reconnect) and reports the queue whenever anything changes.
 final class OrdersListener: @unchecked Sendable {
     private struct OrderDoc {
         let timestamp: Int64
@@ -73,7 +72,7 @@ final class OrdersListener: @unchecked Sendable {
 
     private static func startOfToday() -> Int64 {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        return nowMs - nowMs % 86_400_000 // midnight UTC, matching the CLI's Truncate
+        return nowMs - nowMs % 86_400_000 // midnight UTC
     }
 
     private func reset() {

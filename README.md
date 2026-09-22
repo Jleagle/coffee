@@ -9,5 +9,5 @@ brew install --cask Jleagle/coffee/coffee
 ### Install from code
 
 ```
-macos/run.sh
+./run.sh
 ```

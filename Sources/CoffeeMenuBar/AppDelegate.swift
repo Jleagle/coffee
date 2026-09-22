@@ -164,7 +164,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func playOpenSound() {
         guard Settings.playSounds else { return }
-        // Same fanfare as the CLI's WaitForShopOpen.
         if let sound = NSSound(named: "Funk") {
             sound.play()
         } else {

@@ -5,9 +5,8 @@ let package = Package(
     name: "coffee",
     platforms: [.macOS(.v13)],
     products: [
-        // Wrapped into Coffee.app by the release workflow (installed to
-        // /Applications by the Homebrew cask); the Go CLI owns the `coffee`
-        // name in bin.
+        // Wrapped into Coffee.app by bundle.sh (installed to /Applications by
+        // the Homebrew cask).
         .executable(name: "coffee-menubar", targets: ["CoffeeMenuBar"]),
     ],
     targets: [

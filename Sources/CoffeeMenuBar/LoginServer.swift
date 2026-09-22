@@ -16,7 +16,7 @@ struct LoginCredentials: Sendable {
 /// served from here can run the official Firebase JS `signInWithPopup(Google)`
 /// flow with just the web API key — no OAuth client registration needed. The
 /// page posts the resulting ID + refresh tokens back, we verify them with
-/// accounts:lookup (same as the CLI's set-token), and hand the validated
+/// accounts:lookup, and hand the validated
 /// session to `onCredentials`.
 final class LoginServer: @unchecked Sendable {
     private let config: AppConfig
@@ -164,7 +164,7 @@ final class LoginServer: @unchecked Sendable {
     // MARK: - Verification
 
     /// Confirms the tokens with accounts:lookup and returns the canonical
-    /// uid/email/name — mirrors the Go CLI's set-token.
+    /// uid/email/name.
     private func verify(idToken: String, refreshToken: String) async throws -> LoginCredentials {
         var req = URLRequest(url: URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=\(config.apiKey)")!)
         req.httpMethod = "POST"

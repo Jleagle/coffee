@@ -210,7 +210,7 @@ final class OrderWindowController: NSWindowController {
             ))
         })
 
-        // Same filtering as the CLI's `drinks` command: only hot/cold categories.
+        // Only hot/cold categories.
         var drinks: [Drink] = []
         for doc in try await drinkDocsAsync {
             guard let name = FS.string(doc.fields, "name") else { continue }
@@ -323,7 +323,7 @@ final class OrderWindowController: NSWindowController {
                 index = menu.items.firstIndex { ($0.representedObject as? OptionItem)?.id == defaultID }
             }
             if index == nil && coll == "beans" {
-                // Same default as the CLI's order command (Medium Roast).
+                // Fall back to Medium Roast when the drink has no default bean.
                 index = menu.items.firstIndex { ($0.representedObject as? OptionItem)?.name == "Medium Roast" }
             }
             if index == nil && required {

@@ -8,36 +8,52 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
-    # macOS runner: the menu bar app needs swift build.
+  release:
+    # The menu bar app needs swift build.
     runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      # GoReleaser only builds the Go CLI; the Swift app is assembled here and
-      # picked up by the archive's `files` glob (Coffee.app/** at repo root).
+      # Info.plist + ad-hoc codesign live in bundle.sh, shared with run.sh so
+      # local dev builds get the same bundle.
       - name: Build Coffee.app (universal)
         run: |
-          cd macos
           swift build -c release --arch arm64 --arch x86_64
           BIN_DIR=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
+          ./bundle.sh "$BIN_DIR/coffee-menubar" "${GITHUB_REF_NAME#v}" Coffee.app
 
-          # Info.plist + ad-hoc codesign live in bundle.sh, shared with run.sh
-          # so local dev builds get the same bundle.
-          ./bundle.sh "$BIN_DIR/coffee-menubar" "${GITHUB_REF_NAME#v}" ../Coffee.app
+      - name: Package
+        id: package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCHIVE="coffee_${VERSION}_darwin_all.tar.gz"
+          CHECKSUMS="coffee_${VERSION}_checksums.txt"
+          tar -czf "$ARCHIVE" Coffee.app
+          shasum -a 256 "$ARCHIVE" | tee "$CHECKSUMS"
+          {
+            echo "archive=$ARCHIVE"
+            echo "checksums=$CHECKSUMS"
+            echo "sha256=$(cut -d' ' -f1 "$CHECKSUMS")"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          args: release --clean
+      - name: Create GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes \
+            "${{ steps.package.outputs.archive }}" "${{ steps.package.outputs.checksums }}"
+
+      - name: Update Homebrew cask
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SHA256: ${{ steps.package.outputs.sha256 }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/Jleagle/homebrew-coffee.git" tap
+          ./cask.sh "${GITHUB_REF_NAME#v}" "$SHA256" > tap/Casks/coffee.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/coffee.rb
+          git commit -m "Update coffee to ${GITHUB_REF_NAME#v}"
+          git push

@@ -16,7 +16,7 @@ struct AppConfig: Sendable {
     static let defaultAPIKey = "AIzaSyBKSStxYeu_ALi1tm6Fjfu4aW9RFu9PNNk"
 }
 
-// Mirrors firebase.OptionCollections in the Go CLI, in display order.
+// Option collections, in display order.
 let optionCollections: [(coll: String, title: String)] = [
     ("beans", "Beans"),
     ("milks", "Milk"),

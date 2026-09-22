@@ -16,8 +16,8 @@ enum PlaceOutcome: Sendable {
     case deferredUntilOpen
 }
 
-/// Places orders with the same document shape the Go CLI writes, and records
-/// the order in the recents so it can be reordered later.
+/// Places orders and records each one in the recents so it can be reordered
+/// later.
 final class OrderService: @unchecked Sendable {
     private let client: FirestoreClient
     private let session: SessionStore
