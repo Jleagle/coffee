@@ -21,6 +21,13 @@ jobs:
     # The menu bar app needs swift build.
     runs-on: macos-15
     steps:
+      - name: Check tag
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' must look like v1.2.3"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
