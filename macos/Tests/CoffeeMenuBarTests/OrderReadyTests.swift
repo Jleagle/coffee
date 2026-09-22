@@ -1,7 +1,7 @@
 import Testing
 @testable import CoffeeMenuBar
 
-/// Deciding when to flash the icon and alert that an order this app placed
+/// Deciding when to flash the icon and notify that an order this app placed
 /// is ready.
 @Suite struct OrderReadyTests {
     private func service() -> OrderService {

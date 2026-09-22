@@ -2,6 +2,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: StatusItemController!
+    private var notifier: Notifier!
     private var session: SessionStore?
     private var client: FirestoreClient?
     private var orderService: OrderService?
@@ -12,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         status = StatusItemController()
+        notifier = Notifier()
         Task { @MainActor in await self.bootstrap() }
     }
 
@@ -88,12 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         orders.onStatuses = { [weak self] statuses in
             guard let self, let orderService = self.orderService else { return }
-            // Flash the icon and put up an alert when an order this app
+            // Flash the icon and post a notification when an order this app
             // placed is completed.
             let ready = orderService.notePendingStatuses(statuses)
             if !ready.isEmpty {
                 self.status.startFlashing()
-                self.alert(title: "Order ready", text: Self.readyText(ready))
+                self.notify(title: "Order ready", text: Self.readyText(ready))
             }
         }
         orders.start()
@@ -148,10 +150,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if case .placed(let position, _) = outcome {
                         reloadRecentOrders()
                         let suffix = position.map { " You're number \($0) in the queue." } ?? ""
-                        alert(title: "Order placed", text: "\(order.drinkName) ordered now the shop is open.\(suffix)")
+                        notify(title: "Order placed", text: "\(order.drinkName) ordered now the shop is open.\(suffix)")
                     }
                 } catch {
-                    alert(title: "Order failed", text: "\(order.drinkName): \(error.localizedDescription)")
+                    notify(title: "Order failed", text: "\(order.drinkName): \(error.localizedDescription)")
                 }
             }
         }
@@ -201,12 +203,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .placed(let position, _):
                     reloadRecentOrders()
                     let suffix = position.map { " You're number \($0) in the queue." } ?? ""
-                    alert(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
+                    notify(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
                 case .deferredUntilOpen:
-                    alert(title: "Order held", text: "\(order.summary) will be ordered when the shop opens. You can cancel it from the menu until then.")
+                    notify(title: "Order held", text: "\(order.summary) will be ordered when the shop opens. You can cancel it from the menu until then.")
                 }
             } catch {
-                alert(title: "Order failed", text: error.localizedDescription)
+                notify(title: "Order failed", text: error.localizedDescription)
             }
         }
     }
@@ -219,9 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             do {
                 try await orderService.cancel(orderID: order.id)
-                alert(title: "Order cancelled", text: "\(order.drinkName) has been cancelled.")
+                notify(title: "Order cancelled", text: "\(order.drinkName) has been cancelled.")
             } catch {
-                alert(title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
+                notify(title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
             }
         }
     }
@@ -233,9 +235,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelDeferred(_ order: DeferredOrder) {
         guard let orderService else { return }
         if orderService.removeDeferred(id: order.id) {
-            alert(title: "Order cancelled", text: "\(order.drinkName) will not be ordered.")
+            notify(title: "Order cancelled", text: "\(order.drinkName) will not be ordered.")
         } else {
-            alert(title: "Already ordered", text: "\(order.drinkName) was sent when the shop opened. You can still cancel it from the menu while it's queuing.")
+            notify(title: "Already ordered", text: "\(order.drinkName) was sent when the shop opened. You can still cancel it from the menu while it's queuing.")
         }
     }
 
@@ -259,12 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return "Your \(list) are ready."
     }
 
-    @MainActor
-    private func alert(title: String, text: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = text
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+    private func notify(title: String, text: String) {
+        notifier.notify(title: title, body: text)
     }
 }

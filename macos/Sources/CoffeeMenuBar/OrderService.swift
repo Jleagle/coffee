@@ -24,7 +24,7 @@ final class OrderService: @unchecked Sendable {
     private let config: AppConfig
 
     // Orders placed by this app that haven't finished yet (doc ID → drink
-    // name), so the app can flash the icon and put up an alert when one is
+    // name), so the app can flash the icon and post a notification when one is
     // ready. In-memory only; forgotten on restart.
     private let pendingLock = NSLock()
     private var pendingOrders: [String: String] = [:]
