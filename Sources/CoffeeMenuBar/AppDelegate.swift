@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var orders: OrdersListener?
     private var orderWindow: OrderWindowController?
     private var loginServer: LoginServer?
+    private var lastOrders: LastOrdersReminder?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         status = StatusItemController()
@@ -107,6 +108,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         listener.start()
         self.listener = listener
+
+        let lastOrders = LastOrdersReminder(
+            shopIsOpen: { [weak self] in self?.status.shop == .open },
+            notify: { [weak self] in
+                self?.notify(title: LastOrdersReminder.message.title, text: LastOrdersReminder.message.body)
+            }
+        )
+        lastOrders.start()
+        self.lastOrders = lastOrders
 
         log("coffee menu bar started (project \(config.projectID))")
     }
