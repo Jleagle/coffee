@@ -11,14 +11,13 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   release:
-    # The menu bar app needs swift build.
     runs-on: macos-15
     steps:
       - name: Check tag
@@ -33,46 +32,38 @@ jobs:
         with:
           ref: ${{ env.TAG }}
 
-      # Info.plist + ad-hoc codesign live in bundle.sh, shared with run.sh so
-      # local dev builds get the same bundle.
-      - name: Build Coffee.app (universal)
-        run: |
-          swift build -c release --arch arm64 --arch x86_64
-          BIN_DIR=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
-          ./bundle.sh "$BIN_DIR/coffee-menubar" "${TAG#v}" Coffee.app
+      # The same build the formula runs on the user's machine.
+      - name: Build
+        run: swift build -c release
 
-      - name: Package
-        id: package
-        run: |
-          VERSION="${TAG#v}"
-          ARCHIVE="coffee_${VERSION}_darwin_all.tar.gz"
-          CHECKSUMS="coffee_${VERSION}_checksums.txt"
-          tar -czf "$ARCHIVE" Coffee.app
-          shasum -a 256 "$ARCHIVE" | tee "$CHECKSUMS"
-          {
-            echo "archive=$ARCHIVE"
-            echo "checksums=$CHECKSUMS"
-            echo "sha256=$(cut -d' ' -f1 "$CHECKSUMS")"
-          } >> "$GITHUB_OUTPUT"
+      - name: Test
+        run: swift test
 
-      - name: Attach to the GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Brew builds Coffee.app from GitHub's source tarball for the tag, so
+      # there are no binaries to attach to the release.
+      - name: Render the formula
         run: |
-          gh release upload "$TAG" --clobber \
-            "${{ steps.package.outputs.archive }}" "${{ steps.package.outputs.checksums }}"
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          SHA256="$(curl -fsSL --retry 3 "$URL" | shasum -a 256 | cut -d' ' -f1)"
+          ./homebrew/formula.sh "${TAG#v}" "$SHA256" > coffee.rb
+          cat coffee.rb
 
-      - name: Update Homebrew cask
-        env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          SHA256: ${{ steps.package.outputs.sha256 }}
+      - name: Checkout the Homebrew tap
+        uses: actions/checkout@v7
+        with:
+          repository: Jleagle/homebrew-coffee
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update the Homebrew tap
         run: |
-          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/Jleagle/homebrew-coffee.git" tap
-          ./cask.sh "${TAG#v}" "$SHA256" > tap/Casks/coffee.rb
+          mkdir -p tap/Formula tap/Casks
+          cp coffee.rb tap/Formula/coffee.rb
+          cp homebrew/cask.rb tap/Casks/coffee.rb
           cd tap
-          git add Casks/coffee.rb
+          git add Formula/coffee.rb Casks/coffee.rb
           if git diff --cached --quiet; then
-            echo "Cask already up to date"
+            echo "Tap already up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"

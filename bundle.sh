@@ -1,7 +1,7 @@
 #!/bin/sh
-# Wraps a coffee-menubar binary into Coffee.app. Shared by the release
-# workflow and run.sh so the Info.plist (bundle ID, notification style…)
-# lives in one place.
+# Wraps a coffee-menubar binary into Coffee.app. Shared by the Homebrew
+# formula (homebrew/formula.sh) and run.sh so the Info.plist (bundle ID,
+# notification style…) lives in one place.
 #
 #   bundle.sh <binary> <version> <output.app>
 set -eu
