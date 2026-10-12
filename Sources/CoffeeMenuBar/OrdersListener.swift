@@ -1,13 +1,14 @@
 import Foundation
 
-/// One order currently in the queue, for the dropdown's cancel section and
-/// optional queue section.
-struct QueuedOrder: Sendable {
+/// One of today's orders as the listener sees it. The queued ones fill the
+/// dropdown's cancel section and optional queue section; all of them feed the
+/// status tracker.
+struct Order: Sendable {
     /// The Firestore document ID, needed to cancel the order.
     let id: String
     let userName: String
     let drinkName: String
-    /// "queuing" or "being-prepared".
+    /// "queuing", "being-prepared", "completed" or "cancelled".
     let status: String
     /// Whether the signed-in user placed this order.
     let isMine: Bool
@@ -21,7 +22,7 @@ struct QueuedOrder: Sendable {
 /// Maintains a local mirror of the result set (rebuilt free of charge on
 /// every reconnect) and reports the queue whenever anything changes.
 final class OrdersListener: @unchecked Sendable {
-    private struct OrderDoc {
+    struct OrderDoc {
         let timestamp: Int64
         let status: String
         let userName: String
@@ -36,10 +37,10 @@ final class OrdersListener: @unchecked Sendable {
 
     /// (people queuing, non-cancelled orders today, queuing orders oldest
     /// first) — called on the main queue.
-    var onUpdate: ((Int, Int, [QueuedOrder]) -> Void)?
-    /// Doc ID → status for every order seen today — called on the main queue,
-    /// so completions of orders this app placed can be noticed.
-    var onStatuses: (([String: String]) -> Void)?
+    var onUpdate: ((Int, Int, [Order]) -> Void)?
+    /// Every order seen today, oldest first — called on the main queue, so
+    /// your orders changing status can be noticed.
+    var onOrders: (([Order]) -> Void)?
 
     init(config: AppConfig, session: SessionStore, uid: String) {
         self.uid = uid
@@ -116,19 +117,30 @@ final class OrdersListener: @unchecked Sendable {
     }
 
     private func emit() {
-        // The query is anchored at the midnight before the last (re)connect,
-        // so filter client-side too in case the day rolled over mid-stream.
-        let startOfDay = Self.startOfToday()
         lock.lock()
-        let today = orders.filter { $0.value.timestamp > startOfDay }
+        let snapshot = orders
         lock.unlock()
 
-        let total = today.values.filter { $0.status != "cancelled" }.count
-        let queued = today
-            .filter { $0.value.status == "queuing" || $0.value.status == "being-prepared" }
+        // The query is anchored at the midnight before the last (re)connect,
+        // so filter client-side too in case the day rolled over mid-stream.
+        let today = Self.todaysOrders(snapshot, uid: uid, startOfDay: Self.startOfToday())
+        let total = today.filter { $0.status != "cancelled" }.count
+        let queued = today.filter { $0.status == "queuing" || $0.status == "being-prepared" }
+
+        DispatchQueue.main.async { [onUpdate, onOrders] in
+            onUpdate?(queued.count, total, queued)
+            onOrders?(today)
+        }
+    }
+
+    /// Today's orders from the mirror, oldest first, with the signed-in
+    /// user's marked as theirs.
+    static func todaysOrders(_ docs: [String: OrderDoc], uid: String, startOfDay: Int64) -> [Order] {
+        docs
+            .filter { $0.value.timestamp > startOfDay }
             .sorted { $0.value.timestamp < $1.value.timestamp }
             .map { id, doc in
-                QueuedOrder(
+                Order(
                     id: id,
                     userName: doc.userName,
                     drinkName: doc.drinkName,
@@ -136,11 +148,5 @@ final class OrdersListener: @unchecked Sendable {
                     isMine: !uid.isEmpty && doc.userID == uid
                 )
             }
-        let statuses = today.mapValues { $0.status }
-
-        DispatchQueue.main.async { [onUpdate, onStatuses] in
-            onUpdate?(queued.count, total, queued)
-            onStatuses?(statuses)
-        }
     }
 }

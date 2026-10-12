@@ -16,12 +16,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var signInAction: (() -> Void)?
 
     var recentOrders: [LastOrder] = []
-    private var queueOrders: [QueuedOrder] = []
+    private var queueOrders: [Order] = []
 
     var onNewOrder: (() -> Void)?
     var onReorder: ((LastOrder) -> Void)?
     var onForget: ((LastOrder) -> Void)?
-    var onCancel: ((QueuedOrder) -> Void)?
+    var onCancel: ((Order) -> Void)?
     /// The orders "Only Order When Open" is holding back. Read fresh each
     /// time the menu opens, so there is no copy to keep in sync.
     var heldOrders: () -> [DeferredOrder] = { [] }
@@ -41,7 +41,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         render()
     }
 
-    func setQueue(queuing: Int, ordersToday: Int, orders: [QueuedOrder]) {
+    func setQueue(queuing: Int, ordersToday: Int, orders: [Order]) {
         self.queuing = queuing
         self.ordersToday = ordersToday
         self.queueOrders = orders
@@ -369,7 +369,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func cancelClicked(_ sender: NSMenuItem) {
-        guard let order = sender.representedObject as? QueuedOrder else { return }
+        guard let order = sender.representedObject as? Order else { return }
         onCancel?(order)
     }
 

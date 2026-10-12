@@ -2,8 +2,8 @@ import Testing
 @testable import CoffeeMenuBar
 
 @Suite struct CancelOrderTests {
-    private func order(mine: Bool, status: String) -> QueuedOrder {
-        QueuedOrder(id: "abc123", userName: "James", drinkName: "Latte", status: status, isMine: mine)
+    private func order(mine: Bool, status: String) -> Order {
+        Order(id: "abc123", userName: "James", drinkName: "Latte", status: status, isMine: mine)
     }
 
     // MARK: - Which orders get a "Cancel" item

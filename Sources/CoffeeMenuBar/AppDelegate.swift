@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var orderWindow: OrderWindowController?
     private var loginServer: LoginServer?
     private var lastOrders: LastOrdersReminder?
+    private let statusTracker = OrderStatusTracker()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         status = StatusItemController()
@@ -89,14 +90,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         orders.onUpdate = { [weak self] queuing, ordersToday, queued in
             self?.status.setQueue(queuing: queuing, ordersToday: ordersToday, orders: queued)
         }
-        orders.onStatuses = { [weak self] statuses in
-            guard let self, let orderService = self.orderService else { return }
-            // Flash the icon and post a notification when an order this app
-            // placed is completed.
-            let ready = orderService.notePendingStatuses(statuses)
-            if !ready.isEmpty {
+        orders.onOrders = { [weak self] orders in
+            guard let self else { return }
+            let changes = self.statusTracker.note(orders)
+            // A ready order also flashes the icon until the menu is opened.
+            if changes.contains(where: { $0.status == "completed" }) {
                 self.status.startFlashing()
-                self.notify(title: "Order ready", text: Self.readyText(ready))
+            }
+            for message in Self.notifications(for: changes) {
+                self.notify(title: message.title, text: message.body)
             }
         }
         orders.start()
@@ -227,15 +229,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Cancels one of the user's queued orders. The orders listener sees the
-    /// status change and removes it from the menu and the icon's position.
+    /// status change and removes it from the menu and the icon's position;
+    /// the confirmation here stands in for the tracker's announcement.
     @MainActor
-    private func cancel(_ order: QueuedOrder) {
+    private func cancel(_ order: Order) {
         guard let orderService else { return }
+        statusTracker.expectCancellation(of: order.id)
         Task { @MainActor in
             do {
                 try await orderService.cancel(orderID: order.id)
                 notify(title: "Order cancelled", text: "\(order.drinkName) has been cancelled.")
             } catch {
+                statusTracker.forgetExpectedCancellation(of: order.id)
                 notify(title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
             }
         }
@@ -276,6 +281,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return nil
         }
+    }
+
+    /// The notifications for your orders changing status. Orders completed in
+    /// the same update share one "ready" notification.
+    static func notifications(for changes: [OrderStatusChange]) -> [(title: String, body: String)] {
+        var messages: [(title: String, body: String)] = []
+        for change in changes {
+            switch change.status {
+            case "being-prepared":
+                messages.append(("Order being prepared", "Your \(change.drinkName) is being prepared."))
+            case "cancelled":
+                messages.append(("Order cancelled", "Your \(change.drinkName) was cancelled."))
+            default:
+                break
+            }
+        }
+        let ready = changes.filter { $0.status == "completed" }.map(\.drinkName)
+        if !ready.isEmpty {
+            messages.append(("Order ready", readyText(ready)))
+        }
+        return messages
     }
 
     /// "Your Latte is ready." / "Your Latte and Flat White are ready."

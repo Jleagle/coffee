@@ -23,11 +23,9 @@ final class OrderService: @unchecked Sendable {
     private let session: SessionStore
     private let config: AppConfig
 
-    // Orders placed by this app that haven't finished yet (doc ID → drink
-    // name), so the app can flash the icon and post a notification when one is
-    // ready. In-memory only; forgotten on restart.
-    private let pendingLock = NSLock()
-    private var pendingOrders: [String: String] = [:]
+    // The orders held back by "Only Order When Open". In-memory only;
+    // forgotten on restart.
+    private let lock = NSLock()
     private var deferredOrders: [DeferredOrder] = []
     private var shopOpen = false
 
@@ -40,15 +38,15 @@ final class OrderService: @unchecked Sendable {
     /// Kept up to date by AppDelegate so place() can hold orders back while
     /// the shop is closed (when the setting asks for that).
     func setShopOpen(_ open: Bool) {
-        pendingLock.lock()
+        lock.lock()
         shopOpen = open
-        pendingLock.unlock()
+        lock.unlock()
     }
 
     /// Hands over (and clears) the orders deferred while the shop was closed.
     func takeDeferred() -> [DeferredOrder] {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         let orders = deferredOrders
         deferredOrders = []
         return orders
@@ -57,8 +55,8 @@ final class OrderService: @unchecked Sendable {
     /// The orders currently held back, oldest first, for the menu's Cancel
     /// items.
     func heldOrders() -> [DeferredOrder] {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return deferredOrders
     }
 
@@ -68,8 +66,8 @@ final class OrderService: @unchecked Sendable {
     /// it — in which case nothing changed.
     @discardableResult
     func removeDeferred(id: String) -> Bool {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         let before = deferredOrders.count
         deferredOrders.removeAll { $0.id == id }
         return deferredOrders.count != before
@@ -78,8 +76,8 @@ final class OrderService: @unchecked Sendable {
     /// Stashes the order when "Only Order When Open" is on and the shop isn't
     /// open; returns whether it did.
     private func deferIfClosed(_ order: DeferredOrder) -> Bool {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         guard Settings.onlyOrderWhenOpen && !shopOpen else { return false }
         deferredOrders.append(order)
         return true
@@ -117,8 +115,7 @@ final class OrderService: @unchecked Sendable {
             "lastUpdatedTimestamp": FS.i(nowMs),
         ]
 
-        let name = try await client.createDocument(collection: "order", fields: fields)
-        trackPending(name, drinkName: drinkName)
+        _ = try await client.createDocument(collection: "order", fields: fields)
 
         let position = try? await queuePosition(at: nowMs)
 
@@ -132,36 +129,6 @@ final class OrderService: @unchecked Sendable {
         await session.saveRecentOrder(last)
 
         return .placed(position: position, last: last)
-    }
-
-    /// Remembers an order this app placed (by its full document name) so
-    /// notePendingStatuses can report when it's ready.
-    func trackPending(_ name: String, drinkName: String) {
-        pendingLock.lock()
-        pendingOrders[FS.lastPathComponent(name)] = drinkName
-        pendingLock.unlock()
-    }
-
-    /// Checks the orders listener's doc ID → status map against the orders
-    /// this app placed. Returns the drink names of any that just completed,
-    /// each reported once; a cancelled order stops being tracked without
-    /// triggering anything.
-    func notePendingStatuses(_ statuses: [String: String]) -> [String] {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
-        var ready: [String] = []
-        for (id, drinkName) in pendingOrders {
-            switch statuses[id] {
-            case "completed":
-                pendingOrders[id] = nil
-                ready.append(drinkName)
-            case "cancelled":
-                pendingOrders[id] = nil
-            default:
-                break
-            }
-        }
-        return ready
     }
 
     /// The fields the web app's Cancel button writes.
