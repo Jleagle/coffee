@@ -1,5 +1,8 @@
 import AppKit
 
+/// A notification to post, with the Notifications-menu toggle that governs it.
+typealias Announcement = (kind: NotificationKind, title: String, body: String)
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: StatusItemController!
     private var notifier: Notifier!
@@ -98,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.status.startFlashing()
             }
             for message in Self.notifications(for: changes) {
-                self.notify(title: message.title, text: message.body)
+                self.notify(message.kind, title: message.title, text: message.body)
             }
         }
         orders.start()
@@ -114,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let lastOrders = LastOrdersReminder(
             shopIsOpen: { [weak self] in self?.status.shop == .open },
             notify: { [weak self] in
-                self?.notify(title: LastOrdersReminder.message.title, text: LastOrdersReminder.message.body)
+                self?.notify(.lastOrders, title: LastOrdersReminder.message.title, text: LastOrdersReminder.message.body)
             }
         )
         lastOrders.start()
@@ -133,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         orderWindow?.shopStateChanged(state)
         orderService?.setShopOpen(state == .open)
         if let message = Self.shopNotification(from: previous, to: state) {
-            notify(title: message.title, text: message.body)
+            notify(message.kind, title: message.title, text: message.body)
         }
         if state == .open && previous != .open {
             if previous == .closed {
@@ -165,10 +168,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if case .placed(let position, _) = outcome {
                         reloadRecentOrders()
                         let suffix = position.map { " You're number \($0) in the queue." } ?? ""
-                        notify(title: "Order placed", text: "\(order.drinkName) ordered now the shop is open.\(suffix)")
+                        notify(.orderPlaced, title: "Order placed", text: "\(order.drinkName) ordered now the shop is open.\(suffix)")
                     }
                 } catch {
-                    notify(title: "Order failed", text: "\(order.drinkName): \(error.localizedDescription)")
+                    notify(.orderFailed, title: "Order failed", text: "\(order.drinkName): \(error.localizedDescription)")
                 }
             }
         }
@@ -218,12 +221,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .placed(let position, _):
                     reloadRecentOrders()
                     let suffix = position.map { " You're number \($0) in the queue." } ?? ""
-                    notify(title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
+                    notify(.orderPlaced, title: "Order placed", text: "\(order.summary) ordered.\(suffix)")
                 case .deferredUntilOpen:
-                    notify(title: "Order held", text: "\(order.summary) will be ordered when the shop opens. You can cancel it from the menu until then.")
+                    notify(.orderPlaced, title: "Order held", text: "\(order.summary) will be ordered when the shop opens. You can cancel it from the menu until then.")
                 }
             } catch {
-                notify(title: "Order failed", text: error.localizedDescription)
+                notify(.orderFailed, title: "Order failed", text: error.localizedDescription)
             }
         }
     }
@@ -238,10 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             do {
                 try await orderService.cancel(orderID: order.id)
-                notify(title: "Order cancelled", text: "\(order.drinkName) has been cancelled.")
+                notify(.orderCancelledByYou, title: "Order cancelled", text: "\(order.drinkName) has been cancelled.")
             } catch {
                 statusTracker.forgetExpectedCancellation(of: order.id)
-                notify(title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
+                notify(.orderFailed, title: "Cancel failed", text: "\(order.drinkName): \(error.localizedDescription)")
             }
         }
     }
@@ -253,9 +256,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelDeferred(_ order: DeferredOrder) {
         guard let orderService else { return }
         if orderService.removeDeferred(id: order.id) {
-            notify(title: "Order cancelled", text: "\(order.drinkName) will not be ordered.")
+            notify(.orderCancelledByYou, title: "Order cancelled", text: "\(order.drinkName) will not be ordered.")
         } else {
-            notify(title: "Already ordered", text: "\(order.drinkName) was sent when the shop opened. You can still cancel it from the menu while it's queuing.")
+            notify(.orderPlaced, title: "Already ordered", text: "\(order.drinkName) was sent when the shop opened. You can still cancel it from the menu while it's queuing.")
         }
     }
 
@@ -272,12 +275,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The notification for a shop state change. Only a real opening or
     /// closing counts: startup and listener reconnects pass through .unknown
     /// and re-deliver the current state, and neither is news.
-    static func shopNotification(from previous: ShopState, to state: ShopState) -> (title: String, body: String)? {
+    static func shopNotification(from previous: ShopState, to state: ShopState) -> Announcement? {
         switch (previous, state) {
         case (.closed, .open):
-            return ("Shop open", "The coffee shop is now open.")
+            return (.shopOpens, "Shop open", "The coffee shop is now open.")
         case (.open, .closed):
-            return ("Shop closed", "The coffee shop is now closed.")
+            return (.shopCloses, "Shop closed", "The coffee shop is now closed.")
         default:
             return nil
         }
@@ -285,21 +288,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The notifications for your orders changing status. Orders completed in
     /// the same update share one "ready" notification.
-    static func notifications(for changes: [OrderStatusChange]) -> [(title: String, body: String)] {
-        var messages: [(title: String, body: String)] = []
+    static func notifications(for changes: [OrderStatusChange]) -> [Announcement] {
+        var messages: [Announcement] = []
         for change in changes {
             switch change.status {
             case "being-prepared":
-                messages.append(("Order being prepared", "Your \(change.drinkName) is being prepared."))
+                messages.append((.orderBeingPrepared, "Order being prepared", "Your \(change.drinkName) is being prepared."))
             case "cancelled":
-                messages.append(("Order cancelled", "Your \(change.drinkName) was cancelled."))
+                messages.append((.orderCancelledByShop, "Order cancelled", "Your \(change.drinkName) was cancelled."))
             default:
                 break
             }
         }
         let ready = changes.filter { $0.status == "completed" }.map(\.drinkName)
         if !ready.isEmpty {
-            messages.append(("Order ready", readyText(ready)))
+            messages.append((.orderReady, "Order ready", readyText(ready)))
         }
         return messages
     }
@@ -314,7 +317,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return "Your \(list) are ready."
     }
 
-    private func notify(title: String, text: String) {
+    /// Posts the notification unless its toggle in the Notifications menu is
+    /// off.
+    private func notify(_ kind: NotificationKind, title: String, text: String) {
+        guard Settings.notifies(kind) else { return }
         notifier.notify(title: title, body: text)
     }
 }

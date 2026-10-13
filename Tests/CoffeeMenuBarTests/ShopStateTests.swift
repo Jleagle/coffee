@@ -5,12 +5,14 @@ import Testing
 @Suite struct ShopStateTests {
     @Test func openingIsAnnounced() {
         let message = AppDelegate.shopNotification(from: .closed, to: .open)
+        #expect(message?.kind == .shopOpens)
         #expect(message?.title == "Shop open")
         #expect(message?.body == "The coffee shop is now open.")
     }
 
     @Test func closingIsAnnounced() {
         let message = AppDelegate.shopNotification(from: .open, to: .closed)
+        #expect(message?.kind == .shopCloses)
         #expect(message?.title == "Shop closed")
         #expect(message?.body == "The coffee shop is now closed.")
     }

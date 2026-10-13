@@ -264,6 +264,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(newOrder)
 
         menu.addItem(settingsItem())
+        menu.addItem(notificationsItem())
         menu.addItem(quitItem())
 
         if Settings.showQueue && !queueOrders.isEmpty {
@@ -313,6 +314,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return settings
     }
 
+    /// One checkmark per event that posts a notification.
+    private func notificationsItem() -> NSMenuItem {
+        let notifications = NSMenuItem(title: "Notifications", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        for kind in NotificationKind.allCases {
+            let item = NSMenuItem(title: kind.title, action: #selector(toggleNotification(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = Settings.notifies(kind) ? .on : .off
+            item.toolTip = kind.toolTip
+            item.representedObject = kind
+            sub.addItem(item)
+        }
+        notifications.submenu = sub
+        return notifications
+    }
+
     private func shopLine() -> NSMenuItem {
         let (text, color): (String, NSColor) = {
             switch shop {
@@ -350,6 +368,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleShowQueue() { Settings.showQueue.toggle() }
     @objc private func toggleOnlyOrderWhenOpen() { Settings.onlyOrderWhenOpen.toggle() }
     @objc private func togglePlaySounds() { Settings.playSounds.toggle() }
+
+    @objc private func toggleNotification(_ sender: NSMenuItem) {
+        guard let kind = sender.representedObject as? NotificationKind else { return }
+        Settings.setNotifies(kind, !Settings.notifies(kind))
+    }
 
     @objc private func toggleShowQueueSize() {
         Settings.showQueueSize.toggle()

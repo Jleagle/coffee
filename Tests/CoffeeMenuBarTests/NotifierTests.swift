@@ -5,8 +5,17 @@ import UserNotifications
 
 /// The notification content each "alert" (order ready, placed, failed…) is
 /// delivered with, now that they go through Notification Center instead of
-/// modal dialogs.
-@Suite struct NotifierTests {
+/// modal dialogs. Serialized: two tests here read and write the Play Sounds
+/// key, and this suite is the only one that touches it.
+@Suite(.serialized) struct NotifierTests {
+    @Test func playSoundsIsOffByDefault() {
+        let saved = UserDefaults.standard.object(forKey: "playSounds")
+        defer { UserDefaults.standard.set(saved, forKey: "playSounds") }
+
+        UserDefaults.standard.removeObject(forKey: "playSounds")
+        #expect(Settings.playSounds == false)
+    }
+
     @Test func contentCarriesTitleBodyAndSound() {
         let content = Notifier.content(title: "Order ready", body: "Your Latte is ready.", sound: true)
         #expect(content.title == "Order ready")

@@ -11,17 +11,24 @@ import Testing
         AppDelegate.notifications(for: changes).map { "\($0.title) | \($0.body)" }
     }
 
+    private func kinds(_ changes: [OrderStatusChange]) -> [NotificationKind] {
+        AppDelegate.notifications(for: changes).map(\.kind)
+    }
+
     @Test func beingPreparedIsAnnounced() {
         #expect(lines([change("being-prepared")]) == ["Order being prepared | Your Latte is being prepared."])
+        #expect(kinds([change("being-prepared")]) == [.orderBeingPrepared])
     }
 
     @Test func cancellationIsAnnounced() {
         #expect(lines([change("cancelled")]) == ["Order cancelled | Your Latte was cancelled."])
+        #expect(kinds([change("cancelled")]) == [.orderCancelledByShop])
     }
 
     @Test func ordersReadyTogetherShareOneNotification() {
-        #expect(lines([change("completed", drink: "Latte"), change("completed", drink: "Flat White")])
-            == ["Order ready | Your Latte and Flat White are ready."])
+        let ready = [change("completed", drink: "Latte"), change("completed", drink: "Flat White")]
+        #expect(lines(ready) == ["Order ready | Your Latte and Flat White are ready."])
+        #expect(kinds(ready) == [.orderReady])
     }
 
     @Test func otherStatusesAreQuiet() {
