@@ -16,6 +16,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var signInAction: (() -> Void)?
 
     var recentOrders: [LastOrder] = []
+    /// Drink IDs the shop has marked out of stock; their reorders are disabled.
+    var outOfStock: Set<String> = []
     private var queueOrders: [Order] = []
 
     var onNewOrder: (() -> Void)?
@@ -242,6 +244,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             reorder.target = self
             reorder.toolTip = order.optionsSummary
             reorder.representedObject = order
+            if outOfStock.contains(order.drinkID) {
+                reorder.markOutOfStock()
+                reorder.toolTip = "Out of stock"
+            }
             menu.addItem(reorder)
 
             // Holding ⌥ swaps the row for a "Forget" that drops it from the

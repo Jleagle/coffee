@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var orderService: OrderService?
     private var listener: ShopListener?
     private var orders: OrdersListener?
+    private var stock: StockListener?
+    /// The last stock snapshot, or nil until the first one arrives.
+    private var drinkStock: [String: DrinkStock]?
     private var orderWindow: OrderWindowController?
     private var loginServer: LoginServer?
     private var lastOrders: LastOrdersReminder?
@@ -107,6 +110,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         orders.start()
         self.orders = orders
 
+        let stock = StockListener(config: config, session: sessionStore)
+        stock.onUpdate = { [weak self] drinks in self?.stockChanged(drinks) }
+        stock.start()
+        self.stock = stock
+
         let listener = ShopListener(config: config, session: sessionStore)
         listener.onState = { [weak self] state in
             self?.shopStateChanged(state)
@@ -149,8 +157,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @MainActor
+    private func stockChanged(_ drinks: [String: DrinkStock]) {
+        let outOfStock = StockListener.outOfStock(drinks)
+        status.outOfStock = outOfStock
+        orderWindow?.stockChanged(outOfStock)
+        if let previous = drinkStock {
+            let watching = Set(status.recentOrders.map(\.drinkID))
+            for message in Self.stockNotifications(from: previous, to: drinks, watching: watching) {
+                notify(message.kind, title: message.title, text: message.body)
+            }
+        }
+        drinkStock = drinks
+    }
+
     /// Places any orders that "Only Order When Open" held back while the shop
-    /// was closed.
+    /// was closed, dropping those whose drink has run out in the meantime.
     @MainActor
     private func flushDeferredOrders() {
         guard let orderService else { return }
@@ -158,6 +180,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !held.isEmpty else { return }
         Task { @MainActor in
             for order in held {
+                if status.outOfStock.contains(order.drinkID) {
+                    notify(.orderFailed, title: "Order not placed", text: "\(order.drinkName) is out of stock, so your held order was dropped.")
+                    continue
+                }
                 do {
                     let outcome = try await orderService.place(
                         drinkID: order.drinkID,
@@ -200,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             orderWindow = controller
         }
         orderWindow?.shopStateChanged(status.shop)
+        orderWindow?.stockChanged(status.outOfStock)
         orderWindow?.show()
     }
 
@@ -284,6 +311,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return nil
         }
+    }
+
+    /// The notifications for drinks in your recent orders running out or
+    /// coming back. A drink that disappears from the menu is neither.
+    static func stockNotifications(from previous: [String: DrinkStock], to current: [String: DrinkStock], watching: Set<String>) -> [Announcement] {
+        var messages: [Announcement] = []
+        for id in watching.sorted() {
+            guard let before = previous[id], let after = current[id], before.inStock != after.inStock else { continue }
+            if after.inStock {
+                messages.append((.drinkBackInStock, "Back in stock", "\(after.name) is back in stock."))
+            } else {
+                messages.append((.drinkOutOfStock, "Out of stock", "\(after.name) is out of stock."))
+            }
+        }
+        return messages
     }
 
     /// The notifications for your orders changing status. Orders completed in

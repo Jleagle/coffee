@@ -16,6 +16,7 @@ final class OrderWindowController: NSWindowController {
     private var loading = false
     private var placing = false
     private var shopState: ShopState = .unknown
+    private var outOfStock: Set<String> = []
 
     private let drinkPopup = NSPopUpButton()
     private let shotsPopup = NSPopUpButton()
@@ -57,6 +58,15 @@ final class OrderWindowController: NSWindowController {
 
     func shopStateChanged(_ state: ShopState) {
         shopState = state
+        if !placing {
+            updateStatusLine()
+            validate()
+        }
+    }
+
+    func stockChanged(_ ids: Set<String>) {
+        outOfStock = ids
+        applyStock()
         if !placing {
             updateStatusLine()
             validate()
@@ -265,11 +275,26 @@ final class OrderWindowController: NSWindowController {
             item.indentationLevel = 1
             menu.addItem(item)
         }
+        applyStock()
 
-        if let first = menu.items.firstIndex(where: { $0.representedObject != nil }) {
+        if let first = menu.items.firstIndex(where: { $0.representedObject != nil && $0.isEnabled }) {
             drinkPopup.selectItem(at: first)
         }
         drinkChanged()
+    }
+
+    /// Strikes out the drinks that are out of stock. A selected drink stays
+    /// selected when it runs out; validate() then blocks the order.
+    private func applyStock() {
+        for item in drinkPopup.itemArray {
+            guard let drink = item.representedObject as? Drink else { continue }
+            if outOfStock.contains(drink.id) {
+                item.markOutOfStock(font: drinkPopup.font ?? .menuFont(ofSize: 0))
+            } else {
+                item.isEnabled = true
+                item.attributedTitle = nil
+            }
+        }
     }
 
     private var selectedDrink: Drink? {
@@ -349,11 +374,15 @@ final class OrderWindowController: NSWindowController {
             guard let row = optionRowIndex[coll], !grid.row(at: row).isHidden else { continue }
             if selectedOption(coll) == nil { complete = false }
         }
-        orderButton.isEnabled = complete && catalog != nil
+        orderButton.isEnabled = complete && catalog != nil && !outOfStock.contains(drink.id)
     }
 
     private func updateStatusLine() {
         guard !placing else { return }
+        if let drink = selectedDrink, outOfStock.contains(drink.id) {
+            statusLabel.stringValue = "\(drink.name) is out of stock."
+            return
+        }
         switch shopState {
         case .closed:
             statusLabel.stringValue = catalog == nil ? "Loading menu…" : "The shop is closed — orders will be waiting when it opens."

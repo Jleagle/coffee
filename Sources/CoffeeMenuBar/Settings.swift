@@ -42,6 +42,8 @@ enum NotificationKind: String, CaseIterable {
     case orderCancelledByShop = "notifyOrderCancelledByShop"
     case orderCancelledByYou = "notifyOrderCancelledByYou"
     case orderFailed = "notifyOrderFailed"
+    case drinkOutOfStock = "notifyDrinkOutOfStock"
+    case drinkBackInStock = "notifyDrinkBackInStock"
 
     /// The menu item's title.
     var title: String {
@@ -55,6 +57,8 @@ enum NotificationKind: String, CaseIterable {
         case .orderCancelledByShop: return "Order Cancelled by the Shop"
         case .orderCancelledByYou: return "Order Cancelled by You"
         case .orderFailed: return "Order Failed"
+        case .drinkOutOfStock: return "Drink Out of Stock"
+        case .drinkBackInStock: return "Drink Back in Stock"
         }
     }
 
@@ -69,7 +73,9 @@ enum NotificationKind: String, CaseIterable {
         case .orderReady: return "When your order is ready to collect (the icon still flashes)"
         case .orderCancelledByShop: return "When the shop cancels your order"
         case .orderCancelledByYou: return "Confirmation after you cancel an order from this menu"
-        case .orderFailed: return "When placing or cancelling an order fails"
+        case .orderFailed: return "When placing or cancelling an order fails, or a held order's drink has run out"
+        case .drinkOutOfStock: return "When a drink in your recent orders runs out"
+        case .drinkBackInStock: return "When a drink in your recent orders is available again"
         }
     }
 }
