@@ -432,14 +432,12 @@ final class OrderWindowController: NSWindowController {
                     statusLabel.stringValue = "✓ Order held — it'll be placed when the shop opens. You can cancel it from the menu bar until then."
                 }
                 spinner.stopAnimation(nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                    guard let self else { return }
-                    self.placing = false
-                    self.setControls(enabled: true)
-                    self.updateStatusLine()
-                    self.validate()
-                    self.close()
-                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                placing = false
+                setControls(enabled: true)
+                updateStatusLine()
+                validate()
+                close()
             } catch {
                 placing = false
                 spinner.stopAnimation(nil)

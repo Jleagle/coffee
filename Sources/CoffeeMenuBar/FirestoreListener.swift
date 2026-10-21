@@ -64,6 +64,9 @@ final class FirestoreListener: @unchecked Sendable {
                 try await Task.sleep(nanoseconds: 500_000_000)
             } catch is CancellationError {
                 return
+            } catch where Task.isCancelled {
+                // stop() or resync() cancelled the in-flight request.
+                return
             } catch {
                 failures += 1
                 log("listener error (attempt \(failures)): \(error.localizedDescription)")
