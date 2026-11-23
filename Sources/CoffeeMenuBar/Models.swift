@@ -36,7 +36,7 @@ struct DrinkCategory: Sendable {
 struct Drink: Sendable {
     let id: String
     let name: String
-    let categoryID: String
+    let categoryIDs: [String]
     let optionGroups: Set<String>
     let requiredOptions: Set<String>
     let defaultOptionIDs: [String: String] // collection -> option doc ID
@@ -54,10 +54,77 @@ struct SelectedOption: Sendable {
     let count: Int
 }
 
+/// A heading in the drink menu and the drinks listed under it.
+struct DrinkSection: Sendable {
+    let name: String
+    let drinks: [Drink]
+}
+
 struct Catalog: Sendable {
     let drinks: [Drink]
     let categories: [String: DrinkCategory]
     let options: [String: [OptionItem]]
+}
+
+extension Catalog {
+    /// Builds the catalog from the documents of the drinks and
+    /// drinkCategories collections.
+    init(
+        drinkDocs: [(id: String, fields: [String: Any])],
+        categoryDocs: [(id: String, fields: [String: Any])],
+        options: [String: [OptionItem]]
+    ) {
+        // A category without an order sorts first, as in the web app.
+        let categories = Dictionary(uniqueKeysWithValues: categoryDocs.map { doc in
+            (doc.id, DrinkCategory(
+                id: doc.id,
+                name: FS.string(doc.fields, "name") ?? "",
+                order: Int(FS.int(doc.fields, "order") ?? 0)
+            ))
+        })
+
+        var drinks: [Drink] = []
+        for doc in drinkDocs {
+            guard let name = FS.string(doc.fields, "name") else { continue }
+
+            var defaults: [String: String] = [:]
+            for (coll, value) in FS.mapFields(doc.fields, "defaultOptions") {
+                if let ref = (value as? [String: Any])?["referenceValue"] as? String {
+                    defaults[coll] = FS.lastPathComponent(ref)
+                }
+            }
+            drinks.append(Drink(
+                id: doc.id,
+                name: name,
+                categoryIDs: FS.refArray(doc.fields, "category"),
+                optionGroups: Set(FS.mapFields(doc.fields, "optionGroups").keys),
+                requiredOptions: Set(FS.stringArray(doc.fields, "requiredOptions")),
+                defaultOptionIDs: defaults
+            ))
+        }
+
+        self.init(drinks: drinks, categories: categories, options: options)
+    }
+
+    /// The drink menu laid out as the web app does: a section per category,
+    /// each drink listed under every category it is in. Sections run in
+    /// category order then by name, drinks alphabetically within a section.
+    /// A drink whose category document is gone goes under "Uncategorized".
+    var sections: [DrinkSection] {
+        var byName: [String: (order: Int, drinks: [Drink])] = [:]
+        for drink in drinks {
+            for id in drink.categoryIDs {
+                let category = categories[id]
+                byName[category?.name ?? "Uncategorized", default: (category?.order ?? 0, [])].drinks.append(drink)
+            }
+        }
+        return byName
+            .sorted { a, b in
+                if a.value.order != b.value.order { return a.value.order < b.value.order }
+                return a.key.localizedCaseInsensitiveCompare(b.key) == .orderedAscending
+            }
+            .map { DrinkSection(name: $0.key, drinks: $0.value.drinks.sorted { $0.name < $1.name }) }
+    }
 }
 
 // Stored under "recent_orders" (newest first, max 5) in UserDefaults.

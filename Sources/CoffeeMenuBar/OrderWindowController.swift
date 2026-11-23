@@ -1,6 +1,6 @@
 import AppKit
 
-/// "New Order…" window: a drink popup grouped by hot/cold, a shots popup, and
+/// "New Order…" window: a drink popup grouped by category, a shots popup, and
 /// one popup per option collection. Rows show/hide based on the selected
 /// drink's optionGroups; requiredOptions lose their "None" entry; the drink's
 /// defaultOptions pre-select values.
@@ -212,47 +212,11 @@ final class OrderWindowController: NSWindowController {
             }
         }
 
-        let categories = Dictionary(uniqueKeysWithValues: try await categoryDocsAsync.map { doc in
-            (doc.id, DrinkCategory(
-                id: doc.id,
-                name: FS.string(doc.fields, "name") ?? "",
-                order: Int(FS.int(doc.fields, "order") ?? 999)
-            ))
-        })
-
-        // Only hot/cold categories.
-        var drinks: [Drink] = []
-        for doc in try await drinkDocsAsync {
-            guard let name = FS.string(doc.fields, "name") else { continue }
-            let drinkCategories = FS.refArray(doc.fields, "category")
-                .compactMap { categories[$0] }
-                .filter { $0.name == "hot" || $0.name == "cold" }
-            guard let primary = drinkCategories.min(by: { $0.order < $1.order }) else { continue }
-
-            var defaults: [String: String] = [:]
-            for (coll, value) in FS.mapFields(doc.fields, "defaultOptions") {
-                if let ref = (value as? [String: Any])?["referenceValue"] as? String {
-                    defaults[coll] = FS.lastPathComponent(ref)
-                }
-            }
-            drinks.append(Drink(
-                id: doc.id,
-                name: name,
-                categoryID: primary.id,
-                optionGroups: Set(FS.mapFields(doc.fields, "optionGroups").keys),
-                requiredOptions: Set(FS.stringArray(doc.fields, "requiredOptions")),
-                defaultOptionIDs: defaults
-            ))
-        }
-        drinks.sort { a, b in
-            let ca = categories[a.categoryID]!
-            let cb = categories[b.categoryID]!
-            if ca.order != cb.order { return ca.order < cb.order }
-            if ca.name != cb.name { return ca.name < cb.name }
-            return a.name < b.name
-        }
-
-        return Catalog(drinks: drinks, categories: categories, options: options)
+        return Catalog(
+            drinkDocs: try await drinkDocsAsync,
+            categoryDocs: try await categoryDocsAsync,
+            options: options
+        )
     }
 
     private func populateDrinks() {
@@ -260,20 +224,17 @@ final class OrderWindowController: NSWindowController {
         drinkPopup.removeAllItems()
         menu.autoenablesItems = false
 
-        var currentCategory: String?
-        for drink in catalog.drinks {
-            guard let category = catalog.categories[drink.categoryID] else { continue }
-            if category.id != currentCategory {
-                if currentCategory != nil { menu.addItem(.separator()) }
-                let header = NSMenuItem(title: category.name.capitalized, action: nil, keyEquivalent: "")
-                header.isEnabled = false
-                menu.addItem(header)
-                currentCategory = category.id
+        for (index, section) in catalog.sections.enumerated() {
+            if index > 0 { menu.addItem(.separator()) }
+            let header = NSMenuItem(title: section.name.capitalized, action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for drink in section.drinks {
+                let item = NSMenuItem(title: drink.name, action: nil, keyEquivalent: "")
+                item.representedObject = drink
+                item.indentationLevel = 1
+                menu.addItem(item)
             }
-            let item = NSMenuItem(title: drink.name, action: nil, keyEquivalent: "")
-            item.representedObject = drink
-            item.indentationLevel = 1
-            menu.addItem(item)
         }
         applyStock()
 
